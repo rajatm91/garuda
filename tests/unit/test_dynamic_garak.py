@@ -40,6 +40,8 @@ def test_garak_invocation_includes_probes(tmp_path: Path):
         r = garak.run(ctx, _handle(), _judge(), _policy())
     assert r.ran is True
     argv = rt.call_args.args[1]
+    assert "--target_type" in argv
+    assert "--target_name" in argv
     assert "--probes" in argv
     assert "promptinject" in argv[argv.index("--probes") + 1]
 
