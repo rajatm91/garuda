@@ -147,8 +147,8 @@ def build_html(scan_dir: Path, sarif: dict, manifest: Any) -> str:
             tool_counts[name][lvl] += 1
 
     # Header info
-    model_id = meta.get("id", "UNKNOWN")
-    sha = meta.get("sha", "unknown")
+    model_id = meta.get("id") or "UNKNOWN"
+    sha = meta.get("sha") or "unknown"
     license_label = meta.get("license") or "not declared"
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
