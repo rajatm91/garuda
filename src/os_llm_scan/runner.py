@@ -46,11 +46,11 @@ def _static_steps() -> list[tuple[str, object]]:
 def run_static(ctx: ScanContext) -> list[str]:
     ctx.scan_dir.mkdir(parents=True, exist_ok=True)
     ctx.raw_dir.mkdir(exist_ok=True)
-    ctx.weights_dir.mkdir(exist_ok=True)
-    if not ctx.is_local_source:
-        _download_weights(ctx)
-    else:
+    if ctx.is_local_source:
         _symlink_local(ctx)
+    else:
+        ctx.weights_dir.mkdir(exist_ok=True)
+        _download_weights(ctx)
     skipped = []
     for label, mod in _static_steps():
         log.info("===== %s =====", label)
