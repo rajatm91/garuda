@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from os_llm_scan.manifest import Manifest, load_manifest, save_manifest
+from garuda.manifest import Manifest, load_manifest, save_manifest
 
 
 def test_manifest_create_writes_minimal_shape(tmp_path: Path):

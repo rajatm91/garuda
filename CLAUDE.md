@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A Python package (`os-llm-scan-toolkit`) providing a single `scan` console script for static + behavioural security evaluation of open-source LLMs. uv-managed, hatchling build backend.
+A Python package (`garuda`) providing a single `scan` console script for static + behavioural security evaluation of open-source LLMs. uv-managed, hatchling build backend.
 
 ## Commands
 
@@ -41,19 +41,19 @@ scan report  → reports/scan_results.sarif + reports/scan_report.html
 
 Key modules:
 
-- `src/os_llm_scan/cli.py` — argparse dispatch, `_cmd_static`/`_cmd_all`/etc.
-- `src/os_llm_scan/runner.py` — `run_static`, `run_dynamic`, `run_report`.
-- `src/os_llm_scan/context.py` — `ScanContext`, `StageResult` (frozen dataclasses).
-- `src/os_llm_scan/manifest.py` — `manifest.json` lifecycle (explicit pipeline state).
-- `src/os_llm_scan/stages/static/*.py` — one module per static step 01–10. Soft-fail discipline: missing tool → `{"skipped": "..."}` stub.
-- `src/os_llm_scan/stages/dynamic/inference.py` — `InferenceHandle` abstraction (endpoint OR local-serve).
-- `src/os_llm_scan/stages/dynamic/serve_local.py` — minimal OpenAI-compat FastAPI shim for local model hosting.
-- `src/os_llm_scan/stages/dynamic/judge.py` — LiteLLM judge config (`gemini-2.5-flash` default).
-- `src/os_llm_scan/stages/dynamic/{garak,promptfoo}.py` — subprocess wrappers per engine.
-- `src/os_llm_scan/stages/dynamic/policy.py` — Pydantic policy model + `apply_policy()` verdict roll-up.
-- `src/os_llm_scan/report/sarif.py` — aggregator (multiple `runs` per SARIF log).
-- `src/os_llm_scan/report/html.py` — self-contained HTML report (no CDN).
-- `src/os_llm_scan/report/translators/*.py` — per-tool JSON/JSONL → SARIF run.
+- `src/garuda/cli.py` — argparse dispatch, `_cmd_static`/`_cmd_all`/etc.
+- `src/garuda/runner.py` — `run_static`, `run_dynamic`, `run_report`.
+- `src/garuda/context.py` — `ScanContext`, `StageResult` (frozen dataclasses).
+- `src/garuda/manifest.py` — `manifest.json` lifecycle (explicit pipeline state).
+- `src/garuda/stages/static/*.py` — one module per static step 01–10. Soft-fail discipline: missing tool → `{"skipped": "..."}` stub.
+- `src/garuda/stages/dynamic/inference.py` — `InferenceHandle` abstraction (endpoint OR local-serve).
+- `src/garuda/stages/dynamic/serve_local.py` — minimal OpenAI-compat FastAPI shim for local model hosting.
+- `src/garuda/stages/dynamic/judge.py` — LiteLLM judge config (`gemini-2.5-flash` default).
+- `src/garuda/stages/dynamic/{garak,promptfoo}.py` — subprocess wrappers per engine.
+- `src/garuda/stages/dynamic/policy.py` — Pydantic policy model + `apply_policy()` verdict roll-up.
+- `src/garuda/report/sarif.py` — aggregator (multiple `runs` per SARIF log).
+- `src/garuda/report/html.py` — self-contained HTML report (no CDN).
+- `src/garuda/report/translators/*.py` — per-tool JSON/JSONL → SARIF run.
 
 ## Conventions
 

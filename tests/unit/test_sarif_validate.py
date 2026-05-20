@@ -1,6 +1,6 @@
 import pytest
 
-from os_llm_scan.report._validate import validate_sarif
+from garuda.report._validate import validate_sarif
 
 
 def test_minimal_valid_log_passes():

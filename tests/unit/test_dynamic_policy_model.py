@@ -2,7 +2,7 @@ from pathlib import Path
 import yaml
 import pytest
 
-from os_llm_scan.stages.dynamic.policy import load_policy, Policy
+from garuda.stages.dynamic.policy import load_policy, Policy
 
 
 def _write(tmp_path: Path, doc: dict) -> Path:

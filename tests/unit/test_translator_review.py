@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from os_llm_scan.report.translators.review import build_review_run
+from garuda.report.translators.review import build_review_run
 
 
 def _scan(tmp_path: Path) -> Path:

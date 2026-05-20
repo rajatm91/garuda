@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from os_llm_scan.cli import main
+from garuda.cli import main
 
 
 def test_all_runs_three_phases(tmp_path):
@@ -14,9 +14,9 @@ def test_all_runs_three_phases(tmp_path):
         "{engine: promptfoo, plugins: [bias], sample_size: 5, "
         "thresholds: {error: 0.5, warning: 0.1}}}"
     )
-    with patch("os_llm_scan.runner.run_static", return_value=[]) as rs, \
-         patch("os_llm_scan.runner.run_dynamic") as rd, \
-         patch("os_llm_scan.runner.run_report") as rp:
+    with patch("garuda.runner.run_static", return_value=[]) as rs, \
+         patch("garuda.runner.run_dynamic") as rd, \
+         patch("garuda.runner.run_report") as rp:
         rc = main(["all", "--local-path", str(local), "--out", str(out),
                    "--endpoint", "http://api.x/v1", "--model", "Foo",
                    "--policy", str(policy)])

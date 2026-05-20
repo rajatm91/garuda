@@ -7,13 +7,13 @@ Produces SARIF 2.1.0 + self-contained HTML evidence packs for InfoSec + MRMC rev
 
 ```bash
 # Core install (static stage only)
-uv add os-llm-scan-toolkit
+uv add garuda
 
 # With behavioural-eval support
-uv add "os-llm-scan-toolkit[dynamic]"
+uv add "garuda[dynamic]"
 
 # With local model hosting (vLLM/transformers)
-uv add "os-llm-scan-toolkit[dynamic,local-serve]"
+uv add "garuda[dynamic,local-serve]"
 ```
 
 External binaries (optional, soft-skip if absent):
@@ -146,7 +146,7 @@ attach it to the Legal review request, do not summarise it.
 |---|---|
 | `LITELLM_BASE_URL unset` | Export the LiteLLM proxy URL before `scan dynamic` |
 | `model X not in endpoint /models` | Confirm `--model` matches what `/v1/models` returns |
-| `modelaudit not installed` | Comes with `os-llm-scan-toolkit` core — verify `uv pip list \| grep modelaudit` |
+| `modelaudit not installed` | Comes with `garuda` core — verify `uv pip list \| grep modelaudit` |
 | `garak failed to fetch probe data` | Set `policy.offline: true` to skip HF-hosted probes |
 | `scan dynamic --serve-local` hangs at health-check | Check GPU availability; `transformers` fallback is CPU-only and slow |
 | `404 from HF` | Set `HF_TOKEN` and accept license on model page |

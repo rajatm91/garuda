@@ -1,7 +1,7 @@
 import json
 from unittest.mock import patch
 
-from os_llm_scan.cli import main
+from garuda.cli import main
 
 
 def test_static_local_path_creates_scan_dir(tmp_path):
@@ -9,7 +9,7 @@ def test_static_local_path_creates_scan_dir(tmp_path):
     local.mkdir()
     (local / "config.json").write_text("{}")
     out = tmp_path / "out"
-    with patch("os_llm_scan.runner.run_static", return_value=[]) as rs:
+    with patch("garuda.runner.run_static", return_value=[]) as rs:
         rc = main(["static", "--local-path", str(local), "--out", str(out)])
     assert rc == 0
     assert rs.called

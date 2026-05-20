@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 from unittest.mock import patch
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.static import gitleaks as step
+from garuda.context import ScanContext
+from garuda.stages.static import gitleaks as step
 
 
 def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x", revision=None, local_path=None)
@@ -19,7 +19,7 @@ def test_gitleaks_missing_binary_writes_two_stubs(tmp_path: Path):
 
 def test_gitleaks_happy_path_runs_twice(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
-    with patch("os_llm_scan.stages.static.gitleaks.run_tool") as rt, \
+    with patch("garuda.stages.static.gitleaks.run_tool") as rt, \
          patch("shutil.which", return_value="/usr/bin/gitleaks"):
         rt.return_value.exit_code = 0
         (ctx.raw_dir / "10_gitleaks.json").write_text("{}")

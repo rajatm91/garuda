@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from os_llm_scan.stages.dynamic.policy import (
+from garuda.stages.dynamic.policy import (
     Policy, CategoryPolicy, FailureRateThresholds, PassRateThresholds, apply_policy,
 )
 

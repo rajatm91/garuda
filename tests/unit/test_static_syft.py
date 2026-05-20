@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 from unittest.mock import patch
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.static import syft as step
+from garuda.context import ScanContext
+from garuda.stages.static import syft as step
 
 
 def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x", revision=None, local_path=None)
@@ -19,7 +19,7 @@ def test_missing_syft_writes_two_stubs(tmp_path: Path):
 
 def test_runs_both_formats_when_present(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
-    with patch("os_llm_scan.stages.static.syft.run_tool") as rt, \
+    with patch("garuda.stages.static.syft.run_tool") as rt, \
          patch("shutil.which", return_value="/usr/bin/syft"):
         rt.return_value.exit_code = 0
         for n in ("08_sbom.cdx.json", "08_sbom.spdx.json"):

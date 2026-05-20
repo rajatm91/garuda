@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.static import format_inventory as step
+from garuda.context import ScanContext
+from garuda.stages.static import format_inventory as step
 
 
 def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x", revision=None, local_path=None)

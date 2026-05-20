@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from os_llm_scan.report.translators.eval_summary import build_eval_run
+from garuda.report.translators.eval_summary import build_eval_run
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "raw" / "13_eval_summary.json"
 

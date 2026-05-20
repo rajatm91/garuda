@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.static import pip_audit as step
+from garuda.context import ScanContext
+from garuda.stages.static import pip_audit as step
 
 
 def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x", revision=None, local_path=None)
@@ -9,7 +9,7 @@ def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x", revision=Non
 
 def test_pip_audit_writes_output(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
-    with patch("os_llm_scan.stages.static.pip_audit.run_tool") as rt, \
+    with patch("garuda.stages.static.pip_audit.run_tool") as rt, \
          patch("shutil.which", return_value="/usr/bin/pip-audit"):
         rt.return_value.exit_code = 0
         (ctx.raw_dir / "06_pip_audit.json").write_text('{"dependencies":[]}')

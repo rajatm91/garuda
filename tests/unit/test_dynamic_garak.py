@@ -1,11 +1,11 @@
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.dynamic import garak
-from os_llm_scan.stages.dynamic.inference import InferenceHandle
-from os_llm_scan.stages.dynamic.judge import JudgeHandle
-from os_llm_scan.stages.dynamic.policy import (
+from garuda.context import ScanContext
+from garuda.stages.dynamic import garak
+from garuda.stages.dynamic.inference import InferenceHandle
+from garuda.stages.dynamic.judge import JudgeHandle
+from garuda.stages.dynamic.policy import (
     Policy, CategoryPolicy, FailureRateThresholds,
 )
 
@@ -32,7 +32,7 @@ def _policy() -> Policy:
 
 def test_garak_invocation_includes_probes(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.scan_dir.mkdir(exist_ok=True); ctx.raw_dir.mkdir()
-    with patch("os_llm_scan.stages.dynamic.garak.run_tool") as rt, \
+    with patch("garuda.stages.dynamic.garak.run_tool") as rt, \
          patch("shutil.which", return_value="/usr/bin/python"):
         rt.return_value = MagicMock(exit_code=0)
         prefix = ctx.raw_dir / "11_garak"

@@ -1,6 +1,6 @@
 import json
 
-from os_llm_scan.report.sarif import build_sarif, write_sarif, SARIF_VERSION
+from garuda.report.sarif import build_sarif, write_sarif, SARIF_VERSION
 
 
 def test_build_sarif_minimal(tmp_path):

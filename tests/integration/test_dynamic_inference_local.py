@@ -18,7 +18,7 @@ FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "tiny-model"
 def test_local_serve_starts_and_lists_models(tmp_path):
     pytest.importorskip("transformers")
     port = 8765
-    proc = subprocess.Popen([sys.executable, "-m", "os_llm_scan.cli", "serve",
+    proc = subprocess.Popen([sys.executable, "-m", "garuda.cli", "serve",
                               "--model-path", str(FIXTURE), "--model-id", "tm",
                               "--backend", "transformers", "--port", str(port)])
     try:

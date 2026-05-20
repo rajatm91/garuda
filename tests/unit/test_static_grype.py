@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 from unittest.mock import patch
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.static import grype as step
+from garuda.context import ScanContext
+from garuda.stages.static import grype as step
 
 
 def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x", revision=None, local_path=None)
@@ -30,7 +30,7 @@ def test_grype_missing_sbom_writes_two_stubs(tmp_path: Path):
 def test_grype_happy_path_runs_twice(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
     (ctx.raw_dir / "08_sbom.cdx.json").write_text('{"bomFormat": "CycloneDX"}')
-    with patch("os_llm_scan.stages.static.grype.run_tool") as rt, \
+    with patch("garuda.stages.static.grype.run_tool") as rt, \
          patch("shutil.which", return_value="/usr/bin/grype"):
         rt.return_value.exit_code = 0
         (ctx.raw_dir / "09_grype.json").write_text("{}")

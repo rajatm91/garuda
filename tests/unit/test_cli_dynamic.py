@@ -1,8 +1,8 @@
 import json
 from unittest.mock import patch
 
-from os_llm_scan.cli import main
-from os_llm_scan.manifest import Manifest, save_manifest
+from garuda.cli import main
+from garuda.manifest import Manifest, save_manifest
 
 
 def _seed(tmp_path):
@@ -24,7 +24,7 @@ def test_dynamic_dispatch_calls_run_dynamic(tmp_path, monkeypatch):
         "{engine: garak, probes: [promptinject], sample_size: 10, "
         "thresholds: {error: 0.5, warning: 0.1}}}"
     )
-    with patch("os_llm_scan.runner.run_dynamic") as rd:
+    with patch("garuda.runner.run_dynamic") as rd:
         rc = main(["dynamic", str(tmp_path),
                    "--endpoint", "http://api.x/v1", "--model", "Foo",
                    "--policy", str(policy_yaml)])

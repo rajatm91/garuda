@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from os_llm_scan.report.translators.picklescan import build_picklescan_run
+from garuda.report.translators.picklescan import build_picklescan_run
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "raw" / "05_picklescan.json"
 

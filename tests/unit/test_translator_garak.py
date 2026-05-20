@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from os_llm_scan.report.translators.garak import build_garak_run
+from garuda.report.translators.garak import build_garak_run
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "raw" / "11_garak.jsonl"
 

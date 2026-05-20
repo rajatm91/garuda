@@ -12,7 +12,7 @@ def test_list_models_route():
     pytest.importorskip("transformers")
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
-    from os_llm_scan.stages.dynamic import serve_local
+    from garuda.stages.dynamic import serve_local
     try:
         serve_local._load(FIXTURE, "tiny-model")
     except Exception as e:

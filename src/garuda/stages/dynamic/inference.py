@@ -45,7 +45,7 @@ def resolve_local(model_path: Path, model_id: str, *,
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
     proc = subprocess.Popen(
-        [sys.executable, "-m", "os_llm_scan.cli", "serve",
+        [sys.executable, "-m", "garuda.cli", "serve",
          "--model-path", str(model_path), "--model-id", model_id,
          "--backend", backend, "--port", str(port)],
     )

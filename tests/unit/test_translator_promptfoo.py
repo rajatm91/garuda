@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from os_llm_scan.report.translators.promptfoo import build_promptfoo_run
+from garuda.report.translators.promptfoo import build_promptfoo_run
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "raw" / "12_promptfoo.json"
 

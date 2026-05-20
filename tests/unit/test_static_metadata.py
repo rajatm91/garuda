@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.static import metadata
+from garuda.context import ScanContext
+from garuda.stages.static import metadata
 
 
 def _ctx(tmp_path: Path, local: Path | None = None) -> ScanContext:
@@ -19,7 +19,7 @@ def test_metadata_writes_01_metadata(tmp_path: Path):
     fake_info.library_name = "transformers"; fake_info.siblings = []
     card = MagicMock(); card.to_dict.return_value = {"license": "llama-3"}
     fake_info.card_data = card
-    with patch("os_llm_scan.stages.static.metadata.HfApi") as Api:
+    with patch("garuda.stages.static.metadata.HfApi") as Api:
         Api.return_value.model_info.return_value = fake_info
         r = metadata.run(ctx)
     out = json.loads(r.output_path.read_text())
@@ -42,7 +42,7 @@ def test_metadata_local_path_reads_config(tmp_path: Path):
 
 def test_metadata_hf_failure_writes_stub(tmp_path: Path):
     ctx = _ctx(tmp_path)
-    with patch("os_llm_scan.stages.static.metadata.HfApi") as Api:
+    with patch("garuda.stages.static.metadata.HfApi") as Api:
         Api.return_value.model_info.side_effect = RuntimeError("401")
         r = metadata.run(ctx)
     assert r.ran is False

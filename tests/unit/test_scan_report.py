@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from os_llm_scan.manifest import Manifest, save_manifest
-from os_llm_scan.runner import run_report
+from garuda.manifest import Manifest, save_manifest
+from garuda.runner import run_report
 
 
 def _setup_scan(tmp_path: Path) -> Path:

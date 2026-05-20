@@ -1,5 +1,5 @@
 from pathlib import Path
-from os_llm_scan.context import ScanContext, StageResult
+from garuda.context import ScanContext, StageResult
 
 
 def test_scan_context_paths(tmp_path: Path):

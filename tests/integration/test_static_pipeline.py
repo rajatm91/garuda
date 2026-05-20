@@ -12,7 +12,7 @@ FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "tiny-model"
 def test_scan_static_against_tiny_model(tmp_path: Path):
     out = tmp_path / "scan"
     res = subprocess.run(
-        [sys.executable, "-m", "os_llm_scan.cli", "static",
+        [sys.executable, "-m", "garuda.cli", "static",
          "--local-path", str(FIXTURE), "--out", str(out)],
         capture_output=True, text=True,
     )
@@ -27,12 +27,12 @@ def test_scan_static_against_tiny_model(tmp_path: Path):
 def test_scan_report_after_static(tmp_path: Path):
     out = tmp_path / "scan"
     subprocess.run(
-        [sys.executable, "-m", "os_llm_scan.cli", "static",
+        [sys.executable, "-m", "garuda.cli", "static",
          "--local-path", str(FIXTURE), "--out", str(out)],
         check=True,
     )
     res = subprocess.run(
-        [sys.executable, "-m", "os_llm_scan.cli", "report", str(out)],
+        [sys.executable, "-m", "garuda.cli", "report", str(out)],
         capture_output=True, text=True,
     )
     assert res.returncode == 0, res.stderr

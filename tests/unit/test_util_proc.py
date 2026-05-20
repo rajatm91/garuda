@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from os_llm_scan.util.proc import RunResult, run_tool
+from garuda.util.proc import RunResult, run_tool
 
 
 def test_run_tool_captures_exit_code(tmp_path: Path):

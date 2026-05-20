@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from os_llm_scan.context import ScanContext
-from os_llm_scan.stages.static import picklescan as step
+from garuda.context import ScanContext
+from garuda.stages.static import picklescan as step
 
 
 def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x", revision=None, local_path=None)
@@ -28,7 +28,7 @@ def test_runs_one_subprocess_per_unsafe_file(tmp_path: Path):
         "safetensors":[],
         "unsafe_format":[{"path":"pytorch_model.bin","size":1,"sha256":"x"*64}],
         "other":[], "counts":{"safetensors":0,"unsafe_format":1,"other":0}}))
-    with patch("os_llm_scan.stages.static.picklescan.subprocess.run") as r:
+    with patch("garuda.stages.static.picklescan.subprocess.run") as r:
         r.return_value.returncode = 0
         r.return_value.stdout = "ok"; r.return_value.stderr = ""
         res = step.run(ctx)

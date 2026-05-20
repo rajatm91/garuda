@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from os_llm_scan.report.translators.pip_audit import build_pip_audit_run
+from garuda.report.translators.pip_audit import build_pip_audit_run
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "raw" / "06_pip_audit.json"
 

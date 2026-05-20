@@ -1,6 +1,6 @@
 import json
 
-from os_llm_scan.report.translators.embed import embed_runs
+from garuda.report.translators.embed import embed_runs
 
 
 def test_embed_empty_path_returns_empty(tmp_path):

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from os_llm_scan.util.io import load_json, write_json, write_stub
+from garuda.util.io import load_json, write_json, write_stub
 
 
 def test_load_json_returns_none_for_missing(tmp_path: Path):
