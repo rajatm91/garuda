@@ -1,0 +1,1 @@
+{"type":"object","required":["version","runs"],"properties":{"version":{"const":"2.1.0"},"runs":{"type":"array"}}}
