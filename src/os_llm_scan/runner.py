@@ -1,17 +1,22 @@
 """Stage orchestration."""
 from __future__ import annotations
-import logging, os
+import logging, os, time
 from pathlib import Path
 
 from huggingface_hub import snapshot_download
 
 from .context import ScanContext
-from .manifest import load_manifest
+from .manifest import Manifest, load_manifest, save_manifest
 from .report.sarif import build_sarif, write_sarif
 from .report.html import build_html
 from .report.translators.garak import build_garak_run
 from .report.translators.promptfoo import build_promptfoo_run
 from .report.translators.eval_summary import build_eval_run
+from .stages.dynamic import garak as garak_mod
+from .stages.dynamic import promptfoo as promptfoo_mod
+from .stages.dynamic.inference import resolve_endpoint, resolve_local
+from .stages.dynamic.judge import resolve_judge, sanity_ping
+from .stages.dynamic.policy import apply_policy, load_policy, policy_sha256
 from .stages.static import (
     metadata,
     sha256,
@@ -24,6 +29,7 @@ from .stages.static import (
     gitleaks,
 )
 from .stages.static import picklescan as picklescan_mod  # noqa: F401
+from .util.io import write_json
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +87,51 @@ def _symlink_local(ctx: ScanContext) -> None:
     if ctx.weights_dir.is_symlink():
         ctx.weights_dir.unlink()
     ctx.weights_dir.symlink_to(ctx.local_path)
+
+
+def run_dynamic(scan_dir: Path, *, endpoint: str | None, model_id: str | None,
+                local_path: Path | None, serve_local_flag: bool,
+                backend: str, policy_path: Path) -> None:
+    manifest = load_manifest(scan_dir)
+    policy = load_policy(policy_path)
+
+    judge = resolve_judge(policy.judge)
+    sanity_ping(judge)
+
+    if endpoint:
+        if not model_id:
+            raise RuntimeError("--model required with --endpoint")
+        handle = resolve_endpoint(endpoint, model_id)
+    elif serve_local_flag:
+        src = local_path or scan_dir / "weights"
+        mid = model_id or manifest.repo
+        handle = resolve_local(src, mid, backend=backend)
+    else:
+        raise RuntimeError("--endpoint or --serve-local required")
+
+    ctx = ScanContext(scan_dir=scan_dir, repo=manifest.repo,
+                      revision=manifest.revision_requested,
+                      local_path=local_path)
+    t0 = time.monotonic()
+    try:
+        garak_mod.run(ctx, handle, judge, policy)
+        promptfoo_mod.run(ctx, handle, judge, policy)
+        summary = apply_policy(scan_dir, policy, policy_path)
+        write_json(scan_dir / "raw" / "13_eval_summary.json", summary)
+        (scan_dir / "reports").mkdir(parents=True, exist_ok=True)
+        (scan_dir / "reports" / "policy.applied.yaml").write_text(policy_path.read_text())
+    finally:
+        handle.cleanup()
+
+    manifest.mark_dynamic_done(
+        duration_s=time.monotonic() - t0,
+        inference={"mode": handle.mode, "url": handle.base_url,
+                   "model_id": handle.model_id},
+        judge={"provider": "litellm", "model": judge.model,
+               "base_url": judge.base_url},
+        policy_sha256=policy_sha256(policy_path),
+    )
+    save_manifest(manifest)
 
 
 def run_report(scan_dir: Path) -> tuple[Path, Path]:

@@ -25,7 +25,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
     static_p = sub.add_parser("static", help="Static evidence-pack stage")
     _add_static_args(static_p)
-    sub.add_parser("dynamic", help="Behavioural-eval stage")
+    dyn_p = sub.add_parser("dynamic", help="Behavioural-eval stage")
+    dyn_p.add_argument("scan_dir", type=Path)
+    dyn_src_g = dyn_p.add_mutually_exclusive_group(required=True)
+    dyn_src_g.add_argument("--endpoint", help="OpenAI-compatible base URL")
+    dyn_src_g.add_argument("--serve-local", action="store_true")
+    dyn_p.add_argument("--model", help="model_id for endpoint OR local-serve")
+    dyn_p.add_argument("--local-path", type=Path,
+                       help="Local model dir for --serve-local")
+    dyn_p.add_argument("--backend", choices=["vllm", "transformers"],
+                       default="transformers")
+    dyn_p.add_argument("--policy", type=Path, default=Path("policy.yaml"))
     sub.add_parser("all", help="static + dynamic + report")
     report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
@@ -76,6 +86,13 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.cmd == "static":
         return _cmd_static(args)
+    if args.cmd == "dynamic":
+        from .runner import run_dynamic
+        run_dynamic(scan_dir=args.scan_dir, endpoint=args.endpoint,
+                    model_id=args.model, local_path=args.local_path,
+                    serve_local_flag=args.serve_local, backend=args.backend,
+                    policy_path=args.policy)
+        return 0
     if args.cmd == "report":
         from .runner import run_report
         run_report(args.scan_dir)
