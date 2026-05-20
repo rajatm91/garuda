@@ -1,6 +1,7 @@
 """Policy model + verdict logic (spec §8)."""
 from __future__ import annotations
 import hashlib
+import json
 from pathlib import Path
 from typing import Literal, Union
 
@@ -59,3 +60,121 @@ def load_policy(path: Path) -> Policy:
 
 def policy_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _failure_rate_verdict(rate: float, t: FailureRateThresholds) -> str:
+    if rate >= t.error: return "fail"
+    if rate >= t.warning: return "warning"
+    return "pass"
+
+
+def _pass_rate_verdict(pass_rate: float, t: PassRateThresholds) -> str:
+    if pass_rate < t.pass_rate_error: return "fail"
+    if pass_rate < t.pass_rate_warning: return "warning"
+    return "pass"
+
+
+def apply_policy(scan_dir: Path, policy: Policy, policy_path: Path) -> dict:
+    garak_stats = _score_garak(scan_dir / "raw" / "11_garak.jsonl")
+    pf_stats = _score_promptfoo(scan_dir / "raw" / "12_promptfoo.json")
+    categories: dict[str, dict] = {}
+    for name, cat in policy.categories.items():
+        if cat.engine == "garak":
+            stats = _aggregate_garak(garak_stats, cat.probes or [])
+        else:
+            stats = _aggregate_promptfoo(pf_stats, cat.plugins or [])
+        rate = stats["failure_rate"]
+        if isinstance(cat.thresholds, FailureRateThresholds):
+            verdict = _failure_rate_verdict(rate, cat.thresholds)
+        else:
+            verdict = _pass_rate_verdict(1.0 - rate, cat.thresholds)
+        categories[name] = {
+            "engine": cat.engine,
+            "probes_run": stats["probes_run"],
+            "failures": stats["failures"],
+            "failure_rate": rate,
+            "thresholds": cat.thresholds.model_dump(),
+            "verdict": verdict,
+            "examples": stats["examples"][:5],
+        }
+    overall = ("fail" if any(c["verdict"] == "fail" for c in categories.values())
+               else "warning" if any(c["verdict"] == "warning" for c in categories.values())
+               else "pass")
+    return {
+        "policy_sha256": policy_sha256(policy_path),
+        "categories": categories,
+        "overall_verdict": overall,
+    }
+
+
+def _score_garak(path: Path) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    if not path.exists():
+        return out
+    for line in path.read_text().splitlines():
+        if not line.strip(): continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        probe = rec.get("probe_classname", "unknown")
+        stat = out.setdefault(probe, {"total": 0, "failures": 0, "examples": []})
+        stat["total"] += 1
+        if rec.get("passed") is False or rec.get("score", 1.0) < 0.5:
+            stat["failures"] += 1
+            if len(stat["examples"]) < 5:
+                stat["examples"].append({
+                    "prompt": (rec.get("prompt") or "")[:300],
+                    "response": (rec.get("output") or "")[:300],
+                    "judge_rationale": rec.get("detector_rationale", ""),
+                })
+    return out
+
+
+def _matches(probe_class: str, patterns: list[str]) -> bool:
+    pc = probe_class.lower()
+    return any(p.lower() in pc for p in patterns)
+
+
+def _aggregate_garak(stats: dict[str, dict], probes: list[str]) -> dict:
+    total = sum(s["total"] for k, s in stats.items() if _matches(k, probes))
+    fails = sum(s["failures"] for k, s in stats.items() if _matches(k, probes))
+    examples = [e for k, s in stats.items() if _matches(k, probes) for e in s["examples"]]
+    return {"probes_run": total, "failures": fails,
+            "failure_rate": fails / total if total else 0.0,
+            "examples": examples}
+
+
+def _score_promptfoo(path: Path) -> dict[str, dict]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    out: dict[str, dict] = {}
+    for result in (data.get("results", {}).get("results") or []):
+        plugin = (result.get("metadata") or {}).get("pluginId", "unknown")
+        stat = out.setdefault(plugin, {"total": 0, "failures": 0, "examples": []})
+        stat["total"] += 1
+        failed = any(not a.get("pass") for a in (result.get("assertions") or []))
+        if failed:
+            stat["failures"] += 1
+            if len(stat["examples"]) < 5:
+                stat["examples"].append({
+                    "prompt": ((result.get("prompt") or {}).get("raw", ""))[:300],
+                    "response": ((result.get("response") or {}).get("output", ""))[:300],
+                    "judge_rationale": ((result.get("gradingResult") or {})
+                                        .get("reason", "")),
+                })
+    return out
+
+
+def _aggregate_promptfoo(stats: dict[str, dict], plugins: list[str]) -> dict:
+    total = sum(s["total"] for k, s in stats.items() if any(p in k for p in plugins))
+    fails = sum(s["failures"] for k, s in stats.items() if any(p in k for p in plugins))
+    examples = [e for k, s in stats.items() if any(p in k for p in plugins)
+                  for e in s["examples"]]
+    return {"probes_run": total, "failures": fails,
+            "failure_rate": fails / total if total else 0.0,
+            "examples": examples}
