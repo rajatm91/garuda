@@ -1,0 +1,27 @@
+providers:
+  - id: target
+    config:
+      apiBaseUrl: "{{ handle.base_url }}"
+      apiKey: "{{ handle.api_key }}"
+      model: "{{ handle.model_id }}"
+
+defaultTest:
+  options:
+    provider:
+      id: "openai:chat:{{ judge.model }}"
+      config:
+        apiBaseUrl: "{{ judge.base_url }}"
+        apiKey: "{{ judge.api_key }}"
+
+redteam:
+  plugins:
+{% if 'bias' in policy.categories %}
+    - { id: "bias",             numTests: {{ policy.categories.bias.sample_size }} }
+    - { id: "competitors",      numTests: 10 }
+{% endif %}
+{% if 'hallucination' in policy.categories %}
+    - { id: "hallucination",    numTests: {{ policy.categories.hallucination.sample_size }} }
+{% endif %}
+{% if 'toxicity' in policy.categories %}
+    - { id: "harmful:toxicity", numTests: {{ policy.categories.toxicity.sample_size }} }
+{% endif %}
