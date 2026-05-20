@@ -29,7 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("all", help="static + dynamic + report")
     report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
-    sub.add_parser("serve", help="Internal: host a model for local-serve mode")
+    serve_p = sub.add_parser("serve", help="Host a local model for dynamic stage")
+    serve_p.add_argument("--model-path", required=True, type=Path)
+    serve_p.add_argument("--model-id", required=True)
+    serve_p.add_argument("--backend", choices=["vllm", "transformers"], default="transformers")
+    serve_p.add_argument("--port", type=int, default=8000)
     return parser
 
 
@@ -76,6 +80,13 @@ def main(argv: list[str] | None = None) -> int:
         from .runner import run_report
         run_report(args.scan_dir)
         return 0
+    if args.cmd == "serve":
+        if args.backend == "vllm":
+            print("vLLM backend not yet wired", file=sys.stderr)
+            return 2
+        from .stages.dynamic.serve_local import main as tx_main
+        return tx_main(["--model-path", str(args.model_path),
+                        "--model-id", args.model_id, "--port", str(args.port)])
     print(f"cmd={args.cmd}", file=sys.stderr)
     return 0
 
