@@ -23,10 +23,9 @@ uv run pyright
 
 # CLI
 uv run scan static <repo> | --local-path <dir>
-uv run scan dynamic <scan_dir> --endpoint URL --model NAME | --serve-local
+uv run scan dynamic <scan_dir> --endpoint URL --model NAME
 uv run scan all ...
 uv run scan report <scan_dir>
-uv run scan serve --model-path <dir> --model-id NAME
 ```
 
 ## Architecture
@@ -46,8 +45,7 @@ Key modules:
 - `src/garuda/context.py` — `ScanContext`, `StageResult` (frozen dataclasses).
 - `src/garuda/manifest.py` — `manifest.json` lifecycle (explicit pipeline state).
 - `src/garuda/stages/static/*.py` — one module per static step 01–10. Soft-fail discipline: missing tool → `{"skipped": "..."}` stub.
-- `src/garuda/stages/dynamic/inference.py` — `InferenceHandle` abstraction (endpoint OR local-serve).
-- `src/garuda/stages/dynamic/serve_local.py` — minimal OpenAI-compat FastAPI shim for local model hosting.
+- `src/garuda/stages/dynamic/inference.py` — `InferenceHandle` abstraction (endpoint-only; target hosting is external).
 - `src/garuda/stages/dynamic/judge.py` — LiteLLM judge config (`gemini-2.5-flash` default).
 - `src/garuda/stages/dynamic/{garak,promptfoo}.py` — subprocess wrappers per engine.
 - `src/garuda/stages/dynamic/policy.py` — Pydantic policy model + `apply_policy()` verdict roll-up.

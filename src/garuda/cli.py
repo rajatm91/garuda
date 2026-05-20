@@ -27,14 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_static_args(static_p)
     dyn_p = sub.add_parser("dynamic", help="Behavioural-eval stage")
     dyn_p.add_argument("scan_dir", type=Path)
-    dyn_src_g = dyn_p.add_mutually_exclusive_group(required=True)
-    dyn_src_g.add_argument("--endpoint", help="OpenAI-compatible base URL")
-    dyn_src_g.add_argument("--serve-local", action="store_true")
-    dyn_p.add_argument("--model", help="model_id for endpoint OR local-serve")
-    dyn_p.add_argument("--local-path", type=Path,
-                       help="Local model dir for --serve-local")
-    dyn_p.add_argument("--backend", choices=["vllm", "transformers"],
-                       default="transformers")
+    dyn_p.add_argument("--endpoint", required=True,
+                       help="OpenAI-compatible base URL of the target model")
+    dyn_p.add_argument("--model", required=True,
+                       help="model_id at the endpoint")
     dyn_p.add_argument("--policy", type=Path, default=Path("policy.yaml"))
     all_p = sub.add_parser("all", help="static + dynamic + report")
     all_src = all_p.add_mutually_exclusive_group(required=True)
@@ -43,20 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     all_p.add_argument("--revision", default="main")
     all_p.add_argument("--repo-id")
     all_p.add_argument("--out", type=Path, default=None)
-    inf_g = all_p.add_mutually_exclusive_group(required=True)
-    inf_g.add_argument("--endpoint")
-    inf_g.add_argument("--serve-local", action="store_true")
-    all_p.add_argument("--model")
-    all_p.add_argument("--backend", choices=["vllm", "transformers"],
-                       default="transformers")
+    all_p.add_argument("--endpoint", required=True)
+    all_p.add_argument("--model", required=True)
     all_p.add_argument("--policy", type=Path, default=Path("policy.yaml"))
     report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
-    serve_p = sub.add_parser("serve", help="Host a local model for dynamic stage")
-    serve_p.add_argument("--model-path", required=True, type=Path)
-    serve_p.add_argument("--model-id", required=True)
-    serve_p.add_argument("--backend", choices=["vllm", "transformers"], default="transformers")
-    serve_p.add_argument("--port", type=int, default=8000)
     return parser
 
 
@@ -122,9 +109,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
     save_manifest(m)
 
     run_dynamic(scan_dir=scan_dir, endpoint=args.endpoint,
-                model_id=args.model, local_path=local,
-                serve_local_flag=args.serve_local, backend=args.backend,
-                policy_path=args.policy)
+                model_id=args.model, policy_path=args.policy)
 
     run_report(scan_dir)
     print(f"Scan dir: {scan_dir}")
@@ -140,21 +125,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "dynamic":
         from .runner import run_dynamic
         run_dynamic(scan_dir=args.scan_dir, endpoint=args.endpoint,
-                    model_id=args.model, local_path=args.local_path,
-                    serve_local_flag=args.serve_local, backend=args.backend,
-                    policy_path=args.policy)
+                    model_id=args.model, policy_path=args.policy)
         return 0
     if args.cmd == "report":
         from .runner import run_report
         run_report(args.scan_dir)
         return 0
-    if args.cmd == "serve":
-        if args.backend == "vllm":
-            print("vLLM backend not yet wired", file=sys.stderr)
-            return 2
-        from .stages.dynamic.serve_local import main as tx_main
-        return tx_main(["--model-path", str(args.model_path),
-                        "--model-id", args.model_id, "--port", str(args.port)])
     print(f"cmd={args.cmd}", file=sys.stderr)
     return 0
 

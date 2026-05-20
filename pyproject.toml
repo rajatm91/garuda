@@ -21,12 +21,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dynamic = ["garak>=0.9", "litellm>=1.40"]
-local-serve = [
-  "vllm>=0.5; sys_platform == 'linux'",
-  "transformers>=4.42",
-  "fastapi>=0.110",
-  "uvicorn>=0.30",
-]
 
 [project.scripts]
 scan = "garuda.cli:main"

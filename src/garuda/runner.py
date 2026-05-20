@@ -16,7 +16,7 @@ from .report.translators.promptfoo import build_promptfoo_run
 from .report.translators.eval_summary import build_eval_run
 from .stages.dynamic import garak as garak_mod
 from .stages.dynamic import promptfoo as promptfoo_mod
-from .stages.dynamic.inference import resolve_endpoint, resolve_local
+from .stages.dynamic.inference import resolve_endpoint
 from .stages.dynamic.judge import resolve_judge, sanity_ping
 from .stages.dynamic.policy import apply_policy, load_policy, policy_sha256
 from .stages.static import (  # noqa: F401  — populated into module namespace for mock-friendly _static_steps()
@@ -91,29 +91,19 @@ def _symlink_local(ctx: ScanContext) -> None:
     ctx.weights_dir.symlink_to(ctx.local_path)
 
 
-def run_dynamic(scan_dir: Path, *, endpoint: str | None, model_id: str | None,
-                local_path: Path | None, serve_local_flag: bool,
-                backend: str, policy_path: Path) -> None:
+def run_dynamic(scan_dir: Path, *, endpoint: str, model_id: str,
+                policy_path: Path) -> None:
     manifest = load_manifest(scan_dir)
     policy = load_policy(policy_path)
 
     judge = resolve_judge(policy.judge)
     sanity_ping(judge)
 
-    if endpoint:
-        if not model_id:
-            raise RuntimeError("--model required with --endpoint")
-        handle = resolve_endpoint(endpoint, model_id)
-    elif serve_local_flag:
-        src = local_path or scan_dir / "weights"
-        mid = model_id or manifest.repo
-        handle = resolve_local(src, mid, backend=backend)
-    else:
-        raise RuntimeError("--endpoint or --serve-local required")
+    handle = resolve_endpoint(endpoint, model_id)
 
     ctx = ScanContext(scan_dir=scan_dir, repo=manifest.repo,
                       revision=manifest.revision_requested,
-                      local_path=local_path)
+                      local_path=None)
     t0 = time.monotonic()
     try:
         garak_mod.run(ctx, handle, judge, policy)

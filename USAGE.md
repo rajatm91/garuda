@@ -111,24 +111,7 @@ Gate verdict pill (PASS / WARNING / FAIL) lands in Section 1 of HTML. Section 5 
 
 ---
 
-## 4. Local-serve target (offline)
-
-```bash
-uv run scan dynamic "$SCAN" \
-  --serve-local \
-  --local-path /data/models/Llama-3.1-8B-Instruct \
-  --model meta-llama/Llama-3.1-8B-Instruct \
-  --backend transformers \
-  --policy policy.yaml
-```
-
-Spawns `scan serve` as subprocess. Waits `/v1/models` (120 s timeout). Atexit + SIGTERM cleanup.
-
-`--backend vllm` is a stub in v2.0; falls back to transformers.
-
----
-
-## 5. Full pipeline
+## 4. Full pipeline
 
 ```bash
 uv run scan all meta-llama/Llama-3.1-8B-Instruct \
@@ -139,17 +122,14 @@ uv run scan all meta-llama/Llama-3.1-8B-Instruct \
 
 = `static` → `dynamic` → `report` chained.
 
-Offline:
-```bash
-uv run scan all --local-path /data/models/Llama-3.1-8B-Instruct \
-  --repo-id meta-llama/Llama-3.1-8B-Instruct \
-  --serve-local --backend transformers \
-  --policy policy.yaml
-```
+Offline target hosting: spin up [Ollama](https://ollama.com/),
+[llama.cpp server](https://github.com/ggerganov/llama.cpp/tree/master/examples/server),
+or [vLLM](https://github.com/vllm-project/vllm) yourself and pass its base URL via `--endpoint`.
+Garuda does not bundle a local-serve shim.
 
 ---
 
-## 6. Reading outputs
+## 5. Reading outputs
 
 ### `manifest.json`
 Pipeline state. `stages.dynamic.policy_sha256` = effective policy fingerprint.
@@ -183,7 +163,7 @@ Reproducibility — exact policy used. Re-run with `--policy <file>` to reproduc
 
 ---
 
-## 7. Tuning `policy.yaml`
+## 6. Tuning `policy.yaml`
 
 ```bash
 cp policy.yaml my-policy.yaml
@@ -232,7 +212,7 @@ Drops HF-hosted probes (e.g. realtoxicityprompts). promptfoo plugins still work 
 
 ---
 
-## 8. CI (GitHub Actions)
+## 7. CI (GitHub Actions)
 
 ```yaml
 name: model-scan
@@ -286,7 +266,7 @@ jobs:
 
 ---
 
-## 9. Common workflows
+## 8. Common workflows
 
 ### Re-run reports only
 ```bash
@@ -317,7 +297,7 @@ shasum -a 256 -c /path/to/expected.sha256
 
 ---
 
-## 10. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -327,14 +307,13 @@ shasum -a 256 -c /path/to/expected.sha256
 | `09_grype.json` stubbed | grype not on PATH | install grype |
 | `manifest.json.skipped_steps` populated | Some binaries missing | Expected; install or accept |
 | `garak failed to fetch probe data` | offline + HF probe | Set `offline: true` in policy |
-| `scan dynamic --serve-local` hangs | slow CPU model load | Wait, or use `--backend vllm` on GPU |
 | HF 401 | token missing / licence not accepted | Set `HF_TOKEN`, accept on model page |
 | Pydantic policy error | mixed `probes` + `plugins` | One engine per category |
 | `scan all` exit 4 mid-run | judge unreachable | `scan report` separately for static-only |
 
 ---
 
-## 11. NOT covered (v2.0 scope)
+## 10. NOT covered (v2.0 scope)
 
 See spec §13:
 - CBRN / weapon capability probes (need legally-cleared corpora)

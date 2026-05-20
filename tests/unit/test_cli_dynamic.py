@@ -1,6 +1,8 @@
 import json
 from unittest.mock import patch
 
+import pytest
+
 from garuda.cli import main
 from garuda.manifest import Manifest, save_manifest
 
@@ -32,7 +34,11 @@ def test_dynamic_dispatch_calls_run_dynamic(tmp_path, monkeypatch):
     rd.assert_called_once()
 
 
-def test_dynamic_requires_endpoint_or_serve_local(tmp_path):
-    import pytest
+def test_dynamic_requires_endpoint(tmp_path):
     with pytest.raises(SystemExit):
         main(["dynamic", str(tmp_path), "--model", "Foo"])
+
+
+def test_dynamic_requires_model(tmp_path):
+    with pytest.raises(SystemExit):
+        main(["dynamic", str(tmp_path), "--endpoint", "http://api.x/v1"])

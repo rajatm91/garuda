@@ -11,10 +11,11 @@ uv add garuda
 
 # With behavioural-eval support
 uv add "garuda[dynamic]"
-
-# With local model hosting (vLLM/transformers)
-uv add "garuda[dynamic,local-serve]"
 ```
+
+Garuda does not host target models. Use an external OpenAI-compatible runtime —
+e.g. [Ollama](https://ollama.com/), [llama.cpp server](https://github.com/ggerganov/llama.cpp/tree/master/examples/server),
+or [vLLM](https://github.com/vllm-project/vllm) — and point `scan dynamic --endpoint` at it.
 
 External binaries (optional, soft-skip if absent):
 
@@ -148,7 +149,6 @@ attach it to the Legal review request, do not summarise it.
 | `model X not in endpoint /models` | Confirm `--model` matches what `/v1/models` returns |
 | `modelaudit not installed` | Comes with `garuda` core — verify `uv pip list \| grep modelaudit` |
 | `garak failed to fetch probe data` | Set `policy.offline: true` to skip HF-hosted probes |
-| `scan dynamic --serve-local` hangs at health-check | Check GPU availability; `transformers` fallback is CPU-only and slow |
 | `404 from HF` | Set `HF_TOKEN` and accept license on model page |
 
 ## 11. Architecture
