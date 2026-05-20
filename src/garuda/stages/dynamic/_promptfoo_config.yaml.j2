@@ -1,14 +1,13 @@
 providers:
-  - id: target
+  - id: "litellm:{{ handle.model_id }}"
     config:
       apiBaseUrl: "{{ handle.base_url }}"
       apiKey: "{{ handle.api_key }}"
-      model: "{{ handle.model_id }}"
 
 defaultTest:
   options:
     provider:
-      id: "openai:chat:{{ judge.model }}"
+      id: "litellm:{{ judge.model }}"
       config:
         apiBaseUrl: "{{ judge.base_url }}"
         apiKey: "{{ judge.api_key }}"

@@ -26,7 +26,7 @@ def _policy() -> Policy:
 
 def test_renders_config_with_sample_sizes(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.scan_dir.mkdir(exist_ok=True); ctx.raw_dir.mkdir()
-    h = InferenceHandle("http://x", "m", "k", "endpoint")
+    h = InferenceHandle("http://x", "m", "k", "litellm")
     j = JudgeHandle("http://j", "k", "gemini-2.5-flash", 0, 10)
     with patch("garuda.stages.dynamic.promptfoo.run_tool") as rt, \
          patch("shutil.which", return_value="/usr/bin/promptfoo"):
@@ -35,14 +35,15 @@ def test_renders_config_with_sample_sizes(tmp_path: Path):
         r = promptfoo.run(ctx, h, j, _policy())
     assert r.ran is True
     cfg = (ctx.scan_dir / "12_promptfoo.config.yaml").read_text()
+    assert "litellm:m" in cfg
     assert "numTests: 42" in cfg
     assert "numTests: 77" in cfg
-    assert "gemini-2.5-flash" in cfg
+    assert "litellm:gemini-2.5-flash" in cfg
 
 
 def test_no_promptfoo_categories_stubs(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.scan_dir.mkdir(exist_ok=True); ctx.raw_dir.mkdir()
-    h = InferenceHandle("http://x", "m", "k", "endpoint")
+    h = InferenceHandle("http://x", "m", "k", "litellm")
     j = JudgeHandle("http://j", "k", "g", 0, 10)
     empty = Policy(version=1, categories={
         "prompt_injection": CategoryPolicy(

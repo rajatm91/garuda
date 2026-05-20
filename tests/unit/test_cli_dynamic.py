@@ -20,6 +20,7 @@ def _seed(tmp_path):
 def test_dynamic_dispatch_calls_run_dynamic(tmp_path, monkeypatch):
     _seed(tmp_path)
     monkeypatch.setenv("LITELLM_BASE_URL", "http://lite:4000")
+    monkeypatch.setenv("TARGET_MODEL_API_KEY", "sk-target")
     policy_yaml = tmp_path / "policy.yaml"
     policy_yaml.write_text(
         "version: 1\njudge: {}\ncategories: {prompt_injection: "
@@ -28,17 +29,11 @@ def test_dynamic_dispatch_calls_run_dynamic(tmp_path, monkeypatch):
     )
     with patch("garuda.runner.run_dynamic") as rd:
         rc = main(["dynamic", str(tmp_path),
-                   "--endpoint", "http://api.x/v1", "--model", "Foo",
-                   "--policy", str(policy_yaml)])
+                   "--model", "ollama/llama3.1", "--policy", str(policy_yaml)])
     assert rc == 0
     rd.assert_called_once()
 
 
-def test_dynamic_requires_endpoint(tmp_path):
-    with pytest.raises(SystemExit):
-        main(["dynamic", str(tmp_path), "--model", "Foo"])
-
-
 def test_dynamic_requires_model(tmp_path):
     with pytest.raises(SystemExit):
-        main(["dynamic", str(tmp_path), "--endpoint", "http://api.x/v1"])
+        main(["dynamic", str(tmp_path), "--policy", "/tmp/x.yaml"])

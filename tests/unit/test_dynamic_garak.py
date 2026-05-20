@@ -15,7 +15,7 @@ def _ctx(tmp_path): return ScanContext(scan_dir=tmp_path, repo="x",
 
 
 def _handle(): return InferenceHandle(base_url="http://x", model_id="m",
-                                      api_key="k", mode="endpoint")
+                                      api_key="k", mode="litellm")
 
 
 def _judge(): return JudgeHandle(base_url="http://j", api_key="k",

@@ -23,7 +23,7 @@ uv run pyright
 
 # CLI
 uv run scan static <repo> | --local-path <dir>
-uv run scan dynamic <scan_dir> --endpoint URL --model NAME
+uv run scan dynamic <scan_dir> --model MODEL_ALIAS  # LITELLM_BASE_URL must be set
 uv run scan all ...
 uv run scan report <scan_dir>
 ```

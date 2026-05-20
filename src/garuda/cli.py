@@ -27,10 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_static_args(static_p)
     dyn_p = sub.add_parser("dynamic", help="Behavioural-eval stage")
     dyn_p.add_argument("scan_dir", type=Path)
-    dyn_p.add_argument("--endpoint", required=True,
-                       help="OpenAI-compatible base URL of the target model")
     dyn_p.add_argument("--model", required=True,
-                       help="model_id at the endpoint")
+                       help="LiteLLM model alias (e.g. ollama/llama3.1:8b)")
     dyn_p.add_argument("--policy", type=Path, default=Path("policy.yaml"))
     all_p = sub.add_parser("all", help="static + dynamic + report")
     all_src = all_p.add_mutually_exclusive_group(required=True)
@@ -39,8 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     all_p.add_argument("--revision", default="main")
     all_p.add_argument("--repo-id")
     all_p.add_argument("--out", type=Path, default=None)
-    all_p.add_argument("--endpoint", required=True)
-    all_p.add_argument("--model", required=True)
+    all_p.add_argument("--model", required=True,
+                      help="LiteLLM model alias (e.g. ollama/llama3.1:8b)")
     all_p.add_argument("--policy", type=Path, default=Path("policy.yaml"))
     report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
@@ -108,8 +106,8 @@ def _cmd_all(args: argparse.Namespace) -> int:
     m.mark_static_done(duration_s=time.monotonic() - t0, skipped_steps=skipped)
     save_manifest(m)
 
-    run_dynamic(scan_dir=scan_dir, endpoint=args.endpoint,
-                model_id=args.model, policy_path=args.policy)
+    run_dynamic(scan_dir=scan_dir, model_id=args.model,
+                policy_path=args.policy)
 
     run_report(scan_dir)
     print(f"Scan dir: {scan_dir}")
@@ -124,8 +122,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_all(args)
     if args.cmd == "dynamic":
         from .runner import run_dynamic
-        run_dynamic(scan_dir=args.scan_dir, endpoint=args.endpoint,
-                    model_id=args.model, policy_path=args.policy)
+        run_dynamic(scan_dir=args.scan_dir, model_id=args.model,
+                    policy_path=args.policy)
         return 0
     if args.cmd == "report":
         from .runner import run_report

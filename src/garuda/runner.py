@@ -16,7 +16,7 @@ from .report.translators.promptfoo import build_promptfoo_run
 from .report.translators.eval_summary import build_eval_run
 from .stages.dynamic import garak as garak_mod
 from .stages.dynamic import promptfoo as promptfoo_mod
-from .stages.dynamic.inference import resolve_endpoint
+from .stages.dynamic.inference import resolve_target
 from .stages.dynamic.judge import resolve_judge, sanity_ping
 from .stages.dynamic.policy import apply_policy, load_policy, policy_sha256
 from .stages.static import (  # noqa: F401  — populated into module namespace for mock-friendly _static_steps()
@@ -91,15 +91,14 @@ def _symlink_local(ctx: ScanContext) -> None:
     ctx.weights_dir.symlink_to(ctx.local_path)
 
 
-def run_dynamic(scan_dir: Path, *, endpoint: str, model_id: str,
-                policy_path: Path) -> None:
+def run_dynamic(scan_dir: Path, *, model_id: str, policy_path: Path) -> None:
     manifest = load_manifest(scan_dir)
     policy = load_policy(policy_path)
 
     judge = resolve_judge(policy.judge)
     sanity_ping(judge)
 
-    handle = resolve_endpoint(endpoint, model_id)
+    handle = resolve_target(model_id, judge.base_url)
 
     ctx = ScanContext(scan_dir=scan_dir, repo=manifest.repo,
                       revision=manifest.revision_requested,

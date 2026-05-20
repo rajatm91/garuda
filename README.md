@@ -34,16 +34,15 @@ scan static meta-llama/Llama-3.1-8B-Instruct --revision main
 # Static scan against on-disk model
 scan static --local-path /data/models/Llama-3.1-8B-Instruct
 
-# Dynamic (behavioural) scan against an existing endpoint
+# Dynamic (behavioural) scan against a LiteLLM proxy
 export LITELLM_BASE_URL=http://litellm.internal:4000
 export TARGET_MODEL_API_KEY=sk-...
 scan dynamic scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/ \
-  --endpoint https://api.together.xyz/v1 \
   --model meta-llama/Llama-3.1-8B-Instruct
 
 # Full pipeline (static + dynamic + report)
 scan all meta-llama/Llama-3.1-8B-Instruct \
-  --endpoint https://api.together.xyz/v1 --model meta-llama/Llama-3.1-8B-Instruct
+  --model meta-llama/Llama-3.1-8B-Instruct
 
 # Regenerate reports only
 scan report scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/

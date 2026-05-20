@@ -18,7 +18,6 @@ def test_all_runs_three_phases(tmp_path):
          patch("garuda.runner.run_dynamic") as rd, \
          patch("garuda.runner.run_report") as rp:
         rc = main(["all", "--local-path", str(local), "--out", str(out),
-                   "--endpoint", "http://api.x/v1", "--model", "Foo",
-                   "--policy", str(policy)])
+                   "--model", "ollama/llama3.1", "--policy", str(policy)])
     assert rc == 0
     assert rs.called and rd.called and rp.called
