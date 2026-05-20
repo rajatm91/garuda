@@ -1,0 +1,1 @@
+{"results": [{"path": "a.bin", "exit_code": 0, "stdout": "clean", "stderr": "", "globals_found": false}, {"path": "b.bin", "exit_code": 1, "stdout": "dangerous global os.system", "stderr": "", "globals_found": true}]}
