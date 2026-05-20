@@ -9,6 +9,9 @@ from .context import ScanContext
 from .manifest import load_manifest
 from .report.sarif import build_sarif, write_sarif
 from .report.html import build_html
+from .report.translators.garak import build_garak_run
+from .report.translators.promptfoo import build_promptfoo_run
+from .report.translators.eval_summary import build_eval_run
 from .stages.static import (
     metadata,
     sha256,
@@ -84,7 +87,13 @@ def run_report(scan_dir: Path) -> tuple[Path, Path]:
     """Regenerate SARIF + HTML from an existing scan directory."""
     manifest = load_manifest(scan_dir)
     is_local = manifest.source.get("mode") == "local_path"
-    dynamic_runs: list[dict] = []  # extended in T7.4
+    dynamic_runs = [
+        r for r in (
+            build_garak_run(scan_dir),
+            build_promptfoo_run(scan_dir),
+            build_eval_run(scan_dir),
+        ) if r
+    ]
     sarif = build_sarif(scan_dir, is_local_source=is_local, dynamic_runs=dynamic_runs)
     sarif_path = write_sarif(scan_dir, sarif)
     html_path = scan_dir / "reports" / "scan_report.html"

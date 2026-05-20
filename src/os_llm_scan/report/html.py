@@ -178,8 +178,12 @@ def build_html(scan_dir: Path, sarif: dict, manifest: Any) -> str:
 
     # 1. Summary (with optional gate pill)
     gate_html = ""
-    if isinstance(eval_summary, dict) and eval_summary.get("verdict"):
-        gate_html = " " + _gate_pill(eval_summary.get("verdict", ""))
+    if (
+        isinstance(eval_summary, dict)
+        and "skipped" not in eval_summary
+        and eval_summary.get("overall_verdict")
+    ):
+        gate_html = " " + _gate_pill(eval_summary.get("overall_verdict", ""))
     parts.append(f"""
 <h2 id="summary">1. Executive Summary{gate_html}</h2>
 <div class="grid">
@@ -298,11 +302,66 @@ review by InfoSec and the Model Review &amp; Management Committee.</p>
 </div>
 """)
 
-    # 5. Behavioural evaluation placeholder
-    parts.append(
-        '<h2 id="eval">5. Behavioural Evaluation</h2>'
-        '<div id="eval-body">Behavioural eval results pending dynamic stage.</div>'
-    )
+    # 5. Behavioural evaluation
+    parts.append('<h2 id="eval">5. Behavioural Evaluation</h2>')
+    if (
+        isinstance(eval_summary, dict)
+        and "skipped" not in eval_summary
+        and eval_summary.get("categories")
+    ):
+        cat_cards: list[str] = []
+        all_examples: list[dict] = []
+        for cat, payload in eval_summary["categories"].items():
+            verdict = (payload.get("verdict") or "").lower()
+            pill_cls = {"pass": "pass", "warning": "warn", "fail": "fail"}.get(verdict, "warn")
+            pass_rate = (1.0 - float(payload.get("failure_rate", 0.0))) * 100.0
+            cat_cards.append(
+                f'<div class="card">'
+                f'<div class="n">{pass_rate:.1f}%</div>'
+                f'<div class="l">{_esc(cat.upper())} pass-rate</div>'
+                f'<div style="margin-top:6px;">'
+                f'<span class="gate {pill_cls}">{_esc((payload.get("verdict") or "").upper())}</span>'
+                f'</div>'
+                f'<div style="color:var(--muted);font-size:11px;margin-top:6px;">'
+                f'{_esc(payload.get("engine",""))} &middot; '
+                f'{payload.get("failures",0)}/{payload.get("probes_run",0)} failed</div>'
+                f'</div>'
+            )
+            for ex in (payload.get("examples") or []):
+                ex2 = dict(ex)
+                ex2.setdefault("category", cat)
+                all_examples.append(ex2)
+        parts.append(f'<div class="grid">{"".join(cat_cards)}</div>')
+
+        if all_examples:
+            ex_rows = "".join(
+                f"<tr><td>{_esc(e.get('category',''))}</td>"
+                f"<td><code>{_esc(e.get('probe',''))}</code></td>"
+                f"<td>{_esc((e.get('prompt') or '')[:120])}</td>"
+                f"<td>{_esc((e.get('output') or '')[:120])}</td></tr>"
+                for e in all_examples[:10]
+            )
+            parts.append(
+                '<h3>Top failed probes</h3>'
+                '<div class="scrollx"><table>'
+                '<thead><tr><th>Category</th><th>Probe</th><th>Prompt</th><th>Output</th></tr></thead>'
+                f'<tbody>{ex_rows}</tbody></table></div>'
+            )
+
+        policy_path = scan_dir / "reports" / "policy.applied.yaml"
+        if policy_path.exists():
+            policy_text = policy_path.read_text()
+            parts.append(
+                '<details><summary>Applied policy</summary>'
+                f'<pre><code>{_esc(policy_text)}</code></pre>'
+                '</details>'
+            )
+    else:
+        parts.append(
+            '<div id="eval-body" class="empty">'
+            'Behavioural eval results pending dynamic stage.'
+            '</div>'
+        )
 
     # 6. License inventory (Python deps)
     parts.append('<h2 id="licenses">6. Python Dependency License Inventory</h2>')
