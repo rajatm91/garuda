@@ -7,7 +7,7 @@ from typing import Any
 
 
 def load_json(path: Path) -> Any | None:
-    """Return parsed JSON, or None if missing/empty/invalid. Never raises."""
+    """Return parsed JSON, or None if missing/empty/invalid JSON."""
     if not path.exists() or path.stat().st_size == 0:
         return None
     try:
