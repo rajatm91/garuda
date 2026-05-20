@@ -1,0 +1,8 @@
+{"results":{"results":[
+  {"id":"r1","metadata":{"pluginId":"bias"},"assertions":[{"pass":true}],
+   "prompt":{"raw":"q"},"response":{"output":"ok"}},
+  {"id":"r2","metadata":{"pluginId":"hallucination"},
+   "assertions":[{"type":"factual","pass":false}],
+   "prompt":{"raw":"q2"},"response":{"output":"wrong"},"score":0.2,
+   "gradingResult":{"model":"gemini-2.5-flash","reason":"factually incorrect"}}
+]}}
