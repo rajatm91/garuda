@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from os_llm_scan.manifest import Manifest
 from os_llm_scan.report.html import build_html

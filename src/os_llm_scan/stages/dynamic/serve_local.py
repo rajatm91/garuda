@@ -1,6 +1,7 @@
 """Minimal OpenAI-compatible local server (transformers backend)."""
 from __future__ import annotations
-import argparse, time
+import argparse
+import time
 from pathlib import Path
 
 

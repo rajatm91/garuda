@@ -36,7 +36,11 @@ def _health_check(h: InferenceHandle) -> None:
 
 def resolve_local(model_path: Path, model_id: str, *,
                   backend: str = "transformers", port: int = 0) -> InferenceHandle:
-    import socket, subprocess, sys, atexit, signal
+    import socket
+    import subprocess
+    import sys
+    import atexit
+    import signal
     if port == 0:
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]

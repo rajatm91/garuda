@@ -1,6 +1,8 @@
 """Step 05 — second-opinion scan of unsafe-format weight files."""
 from __future__ import annotations
-import logging, subprocess, time
+import logging
+import subprocess
+import time
 
 from ...context import ScanContext, StageResult
 from ...util.io import load_json, write_json

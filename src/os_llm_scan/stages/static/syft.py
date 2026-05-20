@@ -1,6 +1,8 @@
 """Step 08 — syft SBOM (CycloneDX + SPDX)."""
 from __future__ import annotations
-import logging, shutil, time
+import logging
+import shutil
+import time
 
 from ...context import ScanContext, StageResult
 from ...util.io import write_stub

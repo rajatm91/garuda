@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from os_llm_scan.report.translators.embed import embed_runs
 

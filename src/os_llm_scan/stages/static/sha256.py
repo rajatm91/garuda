@@ -1,6 +1,9 @@
 """Step 02 — SHA-256 every weight-format file."""
 from __future__ import annotations
-import hashlib, logging, os, time
+import hashlib
+import logging
+import os
+import time
 from pathlib import Path
 
 from ...context import ScanContext, StageResult

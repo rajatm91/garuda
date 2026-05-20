@@ -1,6 +1,7 @@
 """Step 03 — partition step-02 hashes by extension."""
 from __future__ import annotations
-import logging, time
+import logging
+import time
 
 from ...context import ScanContext, StageResult
 from ...util.io import load_json, write_json, write_stub

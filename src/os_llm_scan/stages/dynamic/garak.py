@@ -1,7 +1,9 @@
 """Step 11 — garak subprocess wrapper."""
 from __future__ import annotations
-import json, logging, shutil, time
-from pathlib import Path
+import json
+import logging
+import shutil
+import time
 
 from ...context import ScanContext, StageResult
 from ...util.io import write_stub

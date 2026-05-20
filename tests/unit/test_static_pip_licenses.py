@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from unittest.mock import patch
 from os_llm_scan.context import ScanContext

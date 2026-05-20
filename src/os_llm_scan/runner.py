@@ -1,12 +1,14 @@
 """Stage orchestration."""
 from __future__ import annotations
-import logging, os, time
+import logging
+import os
+import time
 from pathlib import Path
 
 from huggingface_hub import snapshot_download
 
 from .context import ScanContext
-from .manifest import Manifest, load_manifest, save_manifest
+from .manifest import load_manifest, save_manifest
 from .report.sarif import build_sarif, write_sarif
 from .report.html import build_html
 from .report.translators.garak import build_garak_run
@@ -17,7 +19,7 @@ from .stages.dynamic import promptfoo as promptfoo_mod
 from .stages.dynamic.inference import resolve_endpoint, resolve_local
 from .stages.dynamic.judge import resolve_judge, sanity_ping
 from .stages.dynamic.policy import apply_policy, load_policy, policy_sha256
-from .stages.static import (
+from .stages.static import (  # noqa: F401  — populated into module namespace for mock-friendly _static_steps()
     metadata,
     sha256,
     format_inventory,
