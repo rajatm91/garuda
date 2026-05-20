@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -11,13 +12,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("static", help="Static evidence-pack stage")
     sub.add_parser("dynamic", help="Behavioural-eval stage")
     sub.add_parser("all", help="static + dynamic + report")
-    sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
+    p_report = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
+    p_report.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
     sub.add_parser("serve", help="Internal: host a model for local-serve mode")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd == "report":
+        from .runner import run_report
+        run_report(args.scan_dir)
+        return 0
     print(f"cmd={args.cmd}", file=sys.stderr)
     return 0
 

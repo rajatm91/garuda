@@ -6,6 +6,9 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from .context import ScanContext
+from .manifest import load_manifest
+from .report.sarif import build_sarif, write_sarif
+from .report.html import build_html
 from .stages.static import (
     metadata,
     sha256,
@@ -75,3 +78,16 @@ def _symlink_local(ctx: ScanContext) -> None:
     if ctx.weights_dir.is_symlink():
         ctx.weights_dir.unlink()
     ctx.weights_dir.symlink_to(ctx.local_path)
+
+
+def run_report(scan_dir: Path) -> tuple[Path, Path]:
+    """Regenerate SARIF + HTML from an existing scan directory."""
+    manifest = load_manifest(scan_dir)
+    is_local = manifest.source.get("mode") == "local_path"
+    dynamic_runs: list[dict] = []  # extended in T7.4
+    sarif = build_sarif(scan_dir, is_local_source=is_local, dynamic_runs=dynamic_runs)
+    sarif_path = write_sarif(scan_dir, sarif)
+    html_path = scan_dir / "reports" / "scan_report.html"
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    html_path.write_text(build_html(scan_dir, sarif, manifest))
+    return sarif_path, html_path
