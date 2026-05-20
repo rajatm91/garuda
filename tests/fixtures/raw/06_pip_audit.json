@@ -1,0 +1,1 @@
+{"dependencies":[{"name":"foo","version":"1.0.0","vulns":[{"id":"GHSA-xxxx","description":"RCE","fix_versions":["1.0.1"]}]},{"name":"bar","version":"2.0.0","vulns":[{"id":"GHSA-yyyy","description":"DoS","fix_versions":[]}]}]}
