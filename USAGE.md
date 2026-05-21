@@ -9,7 +9,7 @@ End-to-end recipes for scanning open-source LLMs. See `README.md` for overview, 
 ```bash
 git clone https://github.com/rajatm91/garuda.git
 cd garuda
-uv sync --all-extras
+uv sync --all-extras          # includes garak + litellm (dynamic extras)
 uv run scan --help
 uv run pytest -q
 ```
@@ -24,6 +24,12 @@ brew install syft grype gitleaks
 curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh  | sh -s -- -b /usr/local/bin
 curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | sh -s -- -b /usr/local/bin
+```
+
+promptfoo (required for dynamic stage):
+
+```bash
+npm install -g promptfoo
 ```
 
 Env:
@@ -67,34 +73,74 @@ uv run scan static --local-path /data/models/Llama-3.1-8B-Instruct \
   --repo-id meta-llama/Llama-3.1-8B-Instruct
 ```
 
-`weights/` becomes symlink to `--local-path`. Skip HF download.
+`weights/` becomes symlink to `--local-path`. Skips HF download.
 
 ```bash
-export GRYPE_DB_AUTO_UPDATE=false   # if no internet for CVE DB refresh
+export GRYPE_DB_AUTO_UPDATE=false   # skip CVE DB refresh when no internet
 ```
 
 ---
 
-## 3. Behavioural eval against existing endpoint
+## 3. Behavioural eval (dynamic stage)
 
-Pre-req: LiteLLM proxy with `gemini-2.5-flash`; target model hosted OpenAI-compatible.
+Both the **judge model** (gemini-2.5-flash / grader) and the **target model** (the LLM under test)
+must be registered in the same LiteLLM proxy. Garuda routes all inference through `LITELLM_BASE_URL`.
 
 ```bash
 export LITELLM_BASE_URL=http://litellm.internal:4000
-export LITELLM_API_KEY=sk-...
-export TARGET_MODEL_API_KEY=sk-...
+export LITELLM_API_KEY=sk-...           # judge model auth
+export TARGET_MODEL_API_KEY=sk-...      # target model auth (falls back to LITELLM_API_KEY if unset)
 
-SCAN=scan_meta-llama_Llama-3.1-8B-Instruct_<ts>
+SCAN=scan_Qwen_Qwen3-30B-A3B-Instruct-2507_<ts>
 
 uv run scan dynamic "$SCAN" \
   --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
   --policy policy.yaml
 ```
 
-Steps run:
+`--model` is the LiteLLM model alias for the target (the model being scanned, not the judge).
+
+### Configuring the judge in policy.yaml
+
+`base_url_env` and `api_key_env` accept either an env var name **or** a literal value:
+
+```yaml
+judge:
+  base_url_env: LITELLM_BASE_URL        # reads $LITELLM_BASE_URL at runtime
+  api_key_env:  LITELLM_API_KEY
+
+  # — OR — put the values inline:
+  base_url_env: http://localhost:4000
+  api_key_env:  sk-my-key
+```
+
+### Monitoring progress
+
+Dynamic stage logs subprocess output to files — watch them live with:
+
+```bash
+tail -f "$SCAN/raw/11_garak.stderr.log"    # garak probe progress
+tail -f "$SCAN/raw/12_promptfoo.stdout.log" # promptfoo redteam progress
+```
+
+Terminal also prints each step:
+```
+[dynamic] judge  → gemini-2.5-flash @ LITELLM_BASE_URL
+[dynamic] pinging judge http://litellm.internal:4000 …
+[dynamic] judge OK
+[dynamic] target → Qwen/Qwen3-30B-A3B-Instruct-2507 @ http://litellm.internal:4000
+[dynamic] target OK
+[dynamic] running garak probes  (logs → scan_.../raw/11_garak.stderr.log) …
+[dynamic] garak done
+[dynamic] running promptfoo redteam (logs → scan_.../raw/12_promptfoo.stderr.log) …
+[dynamic] promptfoo done
+```
+
+### Steps run
+
 1. Pydantic-validates `policy.yaml`
-2. Pings LiteLLM judge `/v1/models`
-3. Health-checks target endpoint
+2. Pings LiteLLM judge `/models`
+3. Health-checks target model on same proxy
 4. garak (security probes: prompt-injection, jailbreak, sys-prompt leak, PII)
 5. promptfoo redteam (quality probes: bias, hallucination, toxicity)
 6. Applies policy → `raw/13_eval_summary.json`
@@ -118,12 +164,9 @@ uv run scan all meta-llama/Llama-3.1-8B-Instruct \
   --policy policy.yaml
 ```
 
-= `static` → `dynamic` → `report` chained.
+= `static` → `dynamic` → `report` chained. Same env vars as §3 required.
 
-Offline target hosting: spin up [Ollama](https://ollama.com/),
-[llama.cpp server](https://github.com/ggerganov/llama.cpp/tree/master/examples/server),
-or [vLLM](https://github.com/vllm-project/vllm) and register it in your LiteLLM proxy.
-Garuda does not bundle a local-serve shim.
+Register Ollama, llama.cpp server, vLLM, or any cloud API as a LiteLLM virtual key and set `LITELLM_BASE_URL` to your proxy. Garuda does not bundle a local-serve shim.
 
 ---
 
@@ -147,8 +190,14 @@ Pipeline state. `stages.dynamic.policy_sha256` = effective policy fingerprint.
 | `09_grype.{json,sarif}` | grype CVE |
 | `10_gitleaks.{json,sarif}` | gitleaks secrets |
 | `11_garak.jsonl` | garak probes |
-| `12_promptfoo.json` | promptfoo redteam |
+| `11_garak.stdout.log` | garak stdout (tail -f while running) |
+| `11_garak.stderr.log` | garak stderr + progress |
+| `12_promptfoo.json` | promptfoo redteam results |
+| `12_promptfoo.stdout.log` | promptfoo stdout (tail -f while running) |
+| `12_promptfoo.stderr.log` | promptfoo stderr |
 | `13_eval_summary.json` | policy-applied verdict |
+
+Files containing `{"skipped": "..."}` = tool absent or soft-failed. Pipeline continues.
 
 ### `reports/scan_results.sarif`
 SARIF 2.1.0. Submit to GHAS / Azure DevOps / DefectDojo / SonarQube. `EVAL-OVERALL` rule = single field CI scrapes for gate enforcement.
@@ -165,7 +214,7 @@ Reproducibility — exact policy used. Re-run with `--policy <file>` to reproduc
 
 ```bash
 cp policy.yaml my-policy.yaml
-# edit
+# edit thresholds / sample sizes / probes
 uv run scan dynamic "$SCAN" --model <NAME> --policy my-policy.yaml
 ```
 
@@ -206,7 +255,8 @@ bias:
 ```yaml
 offline: true
 ```
-Drops HF-hosted probes (e.g. realtoxicityprompts). promptfoo plugins still work as long as LiteLLM is reachable.
+Drops HF-hosted probes at runtime (e.g. `realtoxicityprompts`, `trainingdata`).
+Use `policy.airgap.yaml` as a starting point — it has `offline: true` pre-set.
 
 ---
 
@@ -227,10 +277,11 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-extras
 
-      - name: Install scanners
+      - name: Install scanners + promptfoo
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh  | sh -s -- -b /usr/local/bin
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          npm install -g promptfoo
 
       - name: Full scan
         env:
@@ -298,15 +349,17 @@ shasum -a 256 -c /path/to/expected.sha256
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `LITELLM_BASE_URL unset` | env missing | `export LITELLM_BASE_URL=http://...:4000` |
-| `model X not in endpoint /models` | --model mismatch | `curl $ENDPOINT/v1/models`, use exact id |
+| `LITELLM_BASE_URL unset` | env missing | `export LITELLM_BASE_URL=http://...:4000` or set `base_url_env: http://...` in policy |
+| `model X not listed by LiteLLM /models` | `--model` mismatch | `curl $LITELLM_BASE_URL/models` — use exact id |
+| `11_garak.jsonl: {"skipped": "garak not installed"}` | dynamic extra missing | `uv sync --extra dynamic` |
+| `11_garak.jsonl: {"skipped": "garak exit=2"}` | bad garak flags / version | check `11_garak.stderr.log` |
+| `12_promptfoo.json: {"skipped": ...}` | promptfoo not on PATH | `npm install -g promptfoo` |
 | `04_modelaudit.json` shows `{"skipped": ...}` | extra not installed | `uv sync --all-extras` |
 | `09_grype.json` stubbed | grype not on PATH | install grype |
-| `manifest.json.skipped_steps` populated | Some binaries missing | Expected; install or accept |
-| `garak failed to fetch probe data` | offline + HF probe | Set `offline: true` in policy |
-| HF 401 | token missing / licence not accepted | Set `HF_TOKEN`, accept on model page |
-| Pydantic policy error | mixed `probes` + `plugins` | One engine per category |
-| `scan all` exit 4 mid-run | judge unreachable | `scan report` separately for static-only |
+| `manifest.json.skipped_steps` populated | binaries missing | expected; install or accept |
+| `garak failed to fetch probe data` | online probe + no internet | set `offline: true` in policy |
+| HF 401 | token missing / licence not accepted | set `HF_TOKEN`, accept on model page |
+| Pydantic policy error | mixed `probes` + `plugins` | one engine per category |
 
 ---
 
