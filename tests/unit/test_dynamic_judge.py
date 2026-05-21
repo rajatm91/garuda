@@ -14,6 +14,14 @@ def test_resolve_judge_uses_env(monkeypatch):
     assert h.model == "gemini-2.5-flash"
 
 
+def test_resolve_judge_accepts_direct_url_in_policy(monkeypatch):
+    monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+    cfg = JudgeConfig(base_url_env="http://localhost:4000", api_key_env="sk-direct")
+    h = resolve_judge(cfg)
+    assert h.base_url == "http://localhost:4000"
+    assert h.api_key == "sk-direct"
+
+
 def test_resolve_judge_raises_without_base_url(monkeypatch):
     monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
     with pytest.raises(RuntimeError):

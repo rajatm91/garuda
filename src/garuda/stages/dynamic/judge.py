@@ -17,11 +17,18 @@ class JudgeHandle:
     max_tokens: int
 
 
+def _resolve_env_or_value(field: str, env_fallback: str = "") -> str:
+    """Accept either a direct value (starts with http / sk- / etc.) or an env var name."""
+    if field.startswith("http") or "/" in field or field.startswith("sk-"):
+        return field
+    return os.environ.get(field, env_fallback)
+
+
 def resolve_judge(cfg: JudgeConfig) -> JudgeHandle:
-    base = os.environ.get(cfg.base_url_env)
+    base = _resolve_env_or_value(cfg.base_url_env)
     if not base:
-        raise RuntimeError(f"{cfg.base_url_env} unset — judge required for dynamic stage")
-    key = os.environ.get(cfg.api_key_env, "sk-litellm")
+        raise RuntimeError(f"{cfg.base_url_env} unset — set env var or put URL directly in policy judge.base_url_env")
+    key = _resolve_env_or_value(cfg.api_key_env, "sk-litellm")
     return JudgeHandle(base_url=base.rstrip("/"), api_key=key, model=cfg.model,
                        temperature=cfg.temperature, max_tokens=cfg.max_tokens)
 
