@@ -98,7 +98,7 @@ def run_dynamic(scan_dir: Path, *, model_id: str, policy_path: Path) -> None:
     judge = resolve_judge(policy.judge)
     sanity_ping(judge)
 
-    handle = resolve_target(model_id, judge.base_url)
+    handle = resolve_target(model_id)
 
     ctx = ScanContext(scan_dir=scan_dir, repo=manifest.repo,
                       revision=manifest.revision_requested,

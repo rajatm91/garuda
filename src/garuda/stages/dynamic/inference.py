@@ -16,15 +16,13 @@ class InferenceHandle:
     cleanup: Callable[[], None] = field(default=lambda: None)
 
 
-def resolve_target(model_id: str, litellm_base_url: str) -> InferenceHandle:
-    """Build a target handle. Shares base_url with judge; uses TARGET_MODEL_API_KEY."""
-    key = os.environ.get("TARGET_MODEL_API_KEY")
-    if not key:
-        raise RuntimeError(
-            "TARGET_MODEL_API_KEY unset — required for target model auth on LiteLLM proxy"
-        )
-    h = InferenceHandle(base_url=litellm_base_url.rstrip("/"),
-                        model_id=model_id, api_key=key)
+def resolve_target(model_id: str) -> InferenceHandle:
+    """Build a target handle. Uses same LITELLM_BASE_URL as the judge."""
+    base_url = os.environ.get("LITELLM_BASE_URL")
+    if not base_url:
+        raise RuntimeError("LITELLM_BASE_URL unset — required for dynamic stage")
+    key = os.environ.get("TARGET_MODEL_API_KEY") or os.environ.get("LITELLM_API_KEY", "")
+    h = InferenceHandle(base_url=base_url.rstrip("/"), model_id=model_id, api_key=key)
     _health_check(h)
     return h
 

@@ -13,9 +13,8 @@ uv add garuda
 uv add "garuda[dynamic]"
 ```
 
-Garuda does not host target models. Use an external OpenAI-compatible runtime —
-e.g. [Ollama](https://ollama.com/), [llama.cpp server](https://github.com/ggerganov/llama.cpp/tree/master/examples/server),
-or [vLLM](https://github.com/vllm-project/vllm) — and point `scan dynamic --endpoint` at it.
+Garuda does not host target models. Register your model (Ollama, llama.cpp server, vLLM,
+cloud API, etc.) as a LiteLLM virtual key and point `LITELLM_BASE_URL` at your proxy.
 
 External binaries (optional, soft-skip if absent):
 
@@ -53,7 +52,7 @@ scan report scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/
 | Var | When | Notes |
 |---|---|---|
 | `HF_TOKEN` | Static + HF source | Required for gated models (Llama, Gemma, some Qwen) |
-| `TARGET_MODEL_API_KEY` | Dynamic + `--endpoint` | Auth token for target inference endpoint |
+| `TARGET_MODEL_API_KEY` | Dynamic | Auth token for target model on LiteLLM proxy (falls back to `LITELLM_API_KEY`) |
 | `LITELLM_BASE_URL` | Dynamic | Mandatory — LiteLLM proxy base URL for judge model |
 | `LITELLM_API_KEY` | Dynamic | Optional — only if proxy auth required |
 | `GRYPE_DB_AUTO_UPDATE` | Static + offline | Set `false` to skip CVE DB refresh |

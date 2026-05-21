@@ -87,8 +87,7 @@ export TARGET_MODEL_API_KEY=sk-...
 SCAN=scan_meta-llama_Llama-3.1-8B-Instruct_<ts>
 
 uv run scan dynamic "$SCAN" \
-  --endpoint https://api.together.xyz/v1 \
-  --model meta-llama/Llama-3.1-8B-Instruct \
+  --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
   --policy policy.yaml
 ```
 
@@ -115,7 +114,6 @@ Gate verdict pill (PASS / WARNING / FAIL) lands in Section 1 of HTML. Section 5 
 
 ```bash
 uv run scan all meta-llama/Llama-3.1-8B-Instruct \
-  --endpoint https://api.together.xyz/v1 \
   --model meta-llama/Llama-3.1-8B-Instruct \
   --policy policy.yaml
 ```
@@ -124,7 +122,7 @@ uv run scan all meta-llama/Llama-3.1-8B-Instruct \
 
 Offline target hosting: spin up [Ollama](https://ollama.com/),
 [llama.cpp server](https://github.com/ggerganov/llama.cpp/tree/master/examples/server),
-or [vLLM](https://github.com/vllm-project/vllm) yourself and pass its base URL via `--endpoint`.
+or [vLLM](https://github.com/vllm-project/vllm) and register it in your LiteLLM proxy.
 Garuda does not bundle a local-serve shim.
 
 ---
@@ -168,7 +166,7 @@ Reproducibility — exact policy used. Re-run with `--policy <file>` to reproduc
 ```bash
 cp policy.yaml my-policy.yaml
 # edit
-uv run scan dynamic "$SCAN" --endpoint ... --policy my-policy.yaml
+uv run scan dynamic "$SCAN" --model <NAME> --policy my-policy.yaml
 ```
 
 ### Threshold shapes
@@ -242,7 +240,6 @@ jobs:
           TARGET_MODEL_API_KEY: ${{ secrets.TARGET_MODEL_API_KEY }}
         run: |
           uv run scan all "${{ inputs.model }}" \
-            --endpoint "${{ secrets.TARGET_ENDPOINT }}" \
             --model "${{ inputs.model }}" \
             --policy policy.yaml
 
@@ -276,7 +273,7 @@ Idempotent. No network.
 
 ### Re-run dynamic only
 ```bash
-uv run scan dynamic scan_<repo>_<ts>/ --endpoint <URL> --model <NAME> --policy policy.yaml
+uv run scan dynamic scan_<repo>_<ts>/ --model <NAME> --policy policy.yaml
 ```
 Overwrites `11/12/13_*`. Static outputs preserved.
 
