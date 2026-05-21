@@ -1,8 +1,8 @@
 """Step 11 — garak subprocess wrapper."""
 from __future__ import annotations
-import json
 import logging
-import shutil
+import os
+import sys
 import time
 
 from ...context import ScanContext, StageResult
@@ -21,9 +21,12 @@ def run(ctx: ScanContext, handle: InferenceHandle, judge: JudgeHandle,
     out_path = ctx.raw_dir / OUT_JSONL
     out_path.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.monotonic()
-    if shutil.which("python") is None:
-        write_stub(out_path, "python not on PATH")
-        return StageResult(False, time.monotonic() - t0, out_path, "python missing")
+
+    try:
+        import garak  # noqa: F401
+    except ImportError:
+        write_stub(out_path, "garak not installed — run: uv sync --extra dynamic")
+        return StageResult(False, time.monotonic() - t0, out_path, "garak not installed")
 
     probes = sorted({p for cat in policy.categories.values()
                        if cat.engine == "garak" for p in (cat.probes or [])
@@ -33,25 +36,25 @@ def run(ctx: ScanContext, handle: InferenceHandle, judge: JudgeHandle,
         return StageResult(False, time.monotonic() - t0, out_path,
                            "no garak categories in policy")
 
-    gen_opts = ctx.scan_dir / "11_garak_generator.json"
-    gen_opts.write_text(json.dumps({
-        "openai": {"OpenAICompatible": {"uri": handle.base_url,
-                                        "model": handle.model_id,
-                                        "api_key": handle.api_key}}
-    }))
-    prefix = ctx.raw_dir / "11_garak"
+    prefix = ctx.raw_dir.resolve() / "11_garak"
+    # Pass endpoint via env vars — works for garak 0.9 (OPENAI_API_BASE) and 0.10+ (OPENAI_BASE_URL)
+    env = {
+        **os.environ,
+        "OPENAI_API_KEY": handle.api_key or "sk-none",
+        "OPENAI_BASE_URL": handle.base_url,
+        "OPENAI_API_BASE": handle.base_url,
+    }
     res = run_tool(
         "garak",
-        ["python", "-m", "garak",
-         "--target_type", "openai.OpenAICompatible",
-         "--target_name", handle.model_id,
-         "--generator_option_file", str(gen_opts),
+        [sys.executable, "-m", "garak",
+         "--model_type", "openai.OpenAICompatible",
+         "--model_name", handle.model_id,
          "--probes", ",".join(probes),
-         "--report_prefix", str(prefix),
-         "--narrow_output"],
+         "--report_prefix", str(prefix)],
         stdout_path=ctx.raw_dir / "11_garak.stdout.log",
         stderr_path=ctx.raw_dir / "11_garak.stderr.log",
         timeout=3600,
+        env=env,
         cwd=ctx.scan_dir,
     )
     if res.exit_code != 0:

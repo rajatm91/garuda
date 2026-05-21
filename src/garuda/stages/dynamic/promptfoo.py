@@ -43,7 +43,7 @@ def run(ctx: ScanContext, handle: InferenceHandle, judge: JudgeHandle,
     res = run_tool(
         "promptfoo",
         ["promptfoo", "redteam", "run",
-         "--config", str(cfg), "--output", str(out_path),
+         "--config", str(cfg.resolve()), "--output", str(out_path.resolve()),
          "--no-progress-bar"],
         stdout_path=ctx.raw_dir / "12_promptfoo.stdout.log",
         stderr_path=ctx.raw_dir / "12_promptfoo.stderr.log",

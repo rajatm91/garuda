@@ -33,15 +33,17 @@ def _policy() -> Policy:
 def test_garak_invocation_includes_probes(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.scan_dir.mkdir(exist_ok=True); ctx.raw_dir.mkdir()
     with patch("garuda.stages.dynamic.garak.run_tool") as rt, \
-         patch("shutil.which", return_value="/usr/bin/python"):
+         patch("garuda.stages.dynamic.garak.sys") as mock_sys, \
+         patch.dict("sys.modules", {"garak": MagicMock()}):
+        mock_sys.executable = "/fake/python"
         rt.return_value = MagicMock(exit_code=0)
         prefix = ctx.raw_dir / "11_garak"
         prefix.with_suffix(".report.jsonl").write_text('{"passed":true}\n')
         r = garak.run(ctx, _handle(), _judge(), _policy())
     assert r.ran is True
     argv = rt.call_args.args[1]
-    assert "--target_type" in argv
-    assert "--target_name" in argv
+    assert "--model_type" in argv
+    assert "--model_name" in argv
     assert "--probes" in argv
     assert "promptinject" in argv[argv.index("--probes") + 1]
 
