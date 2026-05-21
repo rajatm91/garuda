@@ -49,7 +49,9 @@ def run(ctx: ScanContext, handle: InferenceHandle, judge: JudgeHandle,
          "--probes", ",".join(probes),
          "--report_prefix", str(prefix),
          "--narrow_output"],
+        stdout_path=ctx.raw_dir / "11_garak.stdout.log",
         stderr_path=ctx.raw_dir / "11_garak.stderr.log",
+        timeout=3600,
         cwd=ctx.scan_dir,
     )
     if res.exit_code != 0:

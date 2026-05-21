@@ -95,18 +95,27 @@ def run_dynamic(scan_dir: Path, *, model_id: str, policy_path: Path) -> None:
     manifest = load_manifest(scan_dir)
     policy = load_policy(policy_path)
 
+    print(f"[dynamic] judge  → {policy.judge.model} @ {policy.judge.base_url_env}")
     judge = resolve_judge(policy.judge)
+    print(f"[dynamic] pinging judge {judge.base_url} …", flush=True)
     sanity_ping(judge)
+    print("[dynamic] judge OK")
 
+    print(f"[dynamic] target → {model_id} @ {judge.base_url}", flush=True)
     handle = resolve_target(model_id)
+    print("[dynamic] target OK")
 
     ctx = ScanContext(scan_dir=scan_dir, repo=manifest.repo,
                       revision=manifest.revision_requested,
                       local_path=None)
     t0 = time.monotonic()
     try:
+        print(f"[dynamic] running garak probes  (logs → {scan_dir}/raw/11_garak.stderr.log) …", flush=True)
         garak_mod.run(ctx, handle, judge, policy)
+        print("[dynamic] garak done")
+        print(f"[dynamic] running promptfoo redteam (logs → {scan_dir}/raw/12_promptfoo.stderr.log) …", flush=True)
         promptfoo_mod.run(ctx, handle, judge, policy)
+        print("[dynamic] promptfoo done")
         summary = apply_policy(scan_dir, policy, policy_path)
         write_json(scan_dir / "raw" / "13_eval_summary.json", summary)
         (scan_dir / "reports").mkdir(parents=True, exist_ok=True)

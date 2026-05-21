@@ -45,7 +45,9 @@ def run(ctx: ScanContext, handle: InferenceHandle, judge: JudgeHandle,
         ["promptfoo", "redteam", "run",
          "--config", str(cfg), "--output", str(out_path),
          "--no-progress-bar"],
+        stdout_path=ctx.raw_dir / "12_promptfoo.stdout.log",
         stderr_path=ctx.raw_dir / "12_promptfoo.stderr.log",
+        timeout=3600,
         cwd=ctx.scan_dir,
     )
     if res.exit_code != 0 and not out_path.exists():
