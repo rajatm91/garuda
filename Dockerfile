@@ -11,7 +11,7 @@
 #     garuda:airgap \
 #     all --local-path /models/mymodel --out /scans/run1
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 ARG SYFT_VERSION=1.9.0
 ARG GRYPE_VERSION=0.79.0

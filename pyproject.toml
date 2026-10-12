@@ -6,21 +6,21 @@ build-backend = "hatchling.build"
 name = "garuda"
 version = "2.0.0"
 description = "Static security scan toolkit for open-source LLMs"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
-  "huggingface_hub>=0.24",
-  "modelaudit>=0.2.14",
-  "picklescan>=0.0.20",
-  "pip-audit>=2.7",
-  "pip-licenses>=4.4",
-  "pyyaml>=6.0",
+  "huggingface_hub>=2.2",
+  "modelaudit>=0.2.52",
+  "picklescan>=1.0.5",
+  "pip-audit>=2.10.1",
+  "pip-licenses>=5.5.5",
+  "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
 scan = "garuda.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "pyright>=1.1.370", "jsonschema>=4.22"]
+dev = ["pytest>=9.1.1", "pytest-cov>=7.1", "ruff>=0.17", "pyright>=1.1.414", "jsonschema>=4.26"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/garuda"]
@@ -34,4 +34,4 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py314"

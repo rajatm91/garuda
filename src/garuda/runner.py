@@ -77,7 +77,6 @@ def _download_weights(ctx: ScanContext) -> None:
         repo_id=ctx.repo,
         revision=sha,
         local_dir=str(ctx.weights_dir),
-        local_dir_use_symlinks=False,
         token=os.environ.get("HF_TOKEN"),
     )
 
