@@ -32,8 +32,20 @@ def run(ctx: ScanContext) -> StageResult:
         write_stub(json_p, reason); write_stub(sarif_p, reason)
         return StageResult(ran=False, duration_s=time.monotonic() - t0,
                            output_path=json_p, skip_reason=reason)
-    run_tool(BIN, [BIN, f"sbom:{cdx}", "-o", "json",  "--file", str(json_p)], cwd=ctx.scan_dir)
-    run_tool(BIN, [BIN, f"sbom:{cdx}", "-o", "sarif", "--file", str(sarif_p)], cwd=ctx.scan_dir)
-    return StageResult(ran=json_p.exists(), duration_s=time.monotonic() - t0,
-                       output_path=json_p,
-                       skip_reason=None if json_p.exists() else "grype produced no output")
+    for p in (json_p, sarif_p):
+        p.unlink(missing_ok=True)  # never mistake a previous run's file for this one
+    stderr = ctx.raw_dir / "09_grype.stderr.log"
+    run_tool(BIN, [BIN, f"sbom:{cdx}", "-o", "json", "--file", str(json_p)],
+             stderr_path=stderr, cwd=ctx.scan_dir)
+    run_tool(BIN, [BIN, f"sbom:{cdx}", "-o", "sarif", "--file", str(sarif_p)],
+             stderr_path=stderr, cwd=ctx.scan_dir)
+    # A file existing is not success: grype with an unusable vuln DB writes 0-byte output.
+    data, sarif = load_json(json_p), load_json(sarif_p)
+    if not (isinstance(data, dict) and "matches" in data and isinstance(sarif, dict)
+            and "runs" in sarif):
+        reason = f"grype produced no valid result (see {stderr.name})"
+        write_stub(json_p, reason); write_stub(sarif_p, reason)
+        return StageResult(ran=False, duration_s=time.monotonic() - t0,
+                           output_path=json_p, skip_reason=reason)
+    return StageResult(ran=True, duration_s=time.monotonic() - t0,
+                       output_path=json_p, skip_reason=None)

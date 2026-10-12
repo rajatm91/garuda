@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from garuda.context import ScanContext
 from garuda.stages.static import grype as step
@@ -31,11 +31,25 @@ def test_grype_missing_sbom_writes_two_stubs(tmp_path: Path):
 def test_grype_happy_path_runs_twice(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
     (ctx.raw_dir / "08_sbom.cdx.json").write_text('{"bomFormat": "CycloneDX"}')
-    with patch("garuda.stages.static.grype.run_tool") as rt, \
+    def fake(name, argv, **_):  # grype writes --file in the requested -o format
+        out = {"json": '{"matches": []}', "sarif": '{"runs": []}'}[argv[argv.index("-o") + 1]]
+        Path(argv[argv.index("--file") + 1]).write_text(out)
+        return MagicMock(exit_code=0)
+    with patch("garuda.stages.static.grype.run_tool", side_effect=fake) as rt, \
          patch("shutil.which", return_value="/usr/bin/grype"):
-        rt.return_value.exit_code = 0
-        (ctx.raw_dir / "09_grype.json").write_text("{}")
-        (ctx.raw_dir / "09_grype.sarif").write_text("{}")
         r = step.run(ctx)
     assert rt.call_count == 2
     assert r.ran is True
+
+
+def test_grype_empty_output_is_not_ran(tmp_path: Path):
+    """Old grype + unusable vuln DB wrote 0-byte files that used to count as success."""
+    ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
+    (ctx.raw_dir / "08_sbom.cdx.json").write_text('{"bomFormat": "CycloneDX"}')
+    def fake(name, argv, **_):
+        Path(argv[argv.index("--file") + 1]).write_text("")
+        return MagicMock(exit_code=0)
+    with patch("garuda.stages.static.grype.run_tool", side_effect=fake), \
+         patch("shutil.which", return_value="/usr/bin/grype"):
+        r = step.run(ctx)
+    assert r.ran is False and "no valid result" in (r.skip_reason or "")

@@ -13,9 +13,9 @@
 
 FROM python:3.14-slim
 
-ARG SYFT_VERSION=1.9.0
-ARG GRYPE_VERSION=0.79.0
-ARG GITLEAKS_VERSION=8.21.2
+ARG SYFT_VERSION=1.44.0
+ARG GRYPE_VERSION=0.112.0
+ARG GITLEAKS_VERSION=8.30.1
 
 # ── system packages ───────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -44,13 +44,16 @@ COPY src/ src/
 RUN uv sync --frozen --no-dev
 
 # ── cache grype CVE database in image (no update needed at runtime) ───────────
-RUN grype db update 2>&1 || true
+# Fail the build if the DB can't be fetched: an image without a usable DB makes
+# step 09 silently useless.
+RUN grype db update && grype db status
 
 # ── runtime environment ───────────────────────────────────────────────────────
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    GRYPE_DB_AUTO_UPDATE=false
+    GRYPE_DB_AUTO_UPDATE=false \
+    GRYPE_DB_VALIDATE_AGE=false
 
 VOLUME ["/models", "/scans"]
 
