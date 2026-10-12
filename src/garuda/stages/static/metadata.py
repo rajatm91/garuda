@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, hf_hub_download
 
 from ...context import ScanContext, StageResult
 from ...util.io import write_json, write_stub
@@ -40,8 +40,13 @@ def _from_hf(repo: str, revision: str) -> dict[str, Any]:
     api = HfApi(token=os.environ.get("HF_TOKEN"))
     info = api.model_info(repo, revision=revision, files_metadata=True)
     card = info.card_data.to_dict() if info.card_data else {}
+    st = info.safetensors
     return {
         "id": info.id, "author": info.author, "sha": info.sha, "revision_requested": revision,
+        "gated": info.gated,
+        "base_model": card.get("base_model"),
+        "parameters": {"total": st.total, "by_dtype": st.parameters} if st else None,
+        "config": _hf_config(repo, info.sha),
         "tags": list(info.tags or []),
         "license": card.get("license"),
         "license_name": card.get("license_name"),
@@ -57,6 +62,18 @@ def _from_hf(repo: str, revision: str) -> dict[str, Any]:
             for s in (info.siblings or [])
         ],
     }
+
+
+def _hf_config(repo: str, sha: str | None) -> dict[str, Any] | None:
+    """config.json at the pinned commit (architecture, context window, modalities)."""
+    import json
+    try:
+        path = hf_hub_download(repo, "config.json", revision=sha,
+                               token=os.environ.get("HF_TOKEN"))
+    except Exception as e:  # noqa: BLE001 — repos without config.json (e.g. GGUF-only)
+        log.warning("config.json unavailable: %s", e)
+        return None
+    return json.loads(Path(path).read_text())
 
 
 def _from_local(local: Path, repo: str) -> dict[str, Any]:
@@ -83,5 +100,7 @@ def _from_local(local: Path, repo: str) -> dict[str, Any]:
         "pipeline_tag": config.get("model_type"),
         "last_modified": None, "downloads": None,
         "library_name": "local",
-        "siblings": [],
+        "config": config or None,
+        "siblings": [{"name": str(p.relative_to(local))} for p in sorted(local.rglob("*"))
+                     if p.is_file() and not p.is_symlink()],
     }

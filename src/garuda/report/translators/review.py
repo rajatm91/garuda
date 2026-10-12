@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ...util.io import load_json
+from ..model_card import model_summary
 
 RULES = [
     {
@@ -138,4 +139,6 @@ def build_review_run(scan_dir: Path, *, is_local_source: bool) -> dict:
         },
         "results": results,
         "invocations": [{"executionSuccessful": True}],
+        "properties": {"modelSummary": model_summary(
+            meta, load_json(scan_dir / "raw" / "07_licenses.json"))},
     }
