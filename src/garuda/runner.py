@@ -22,6 +22,7 @@ from .stages.static import (  # noqa: F401  — populated into module namespace 
     gitleaks,
 )
 from .stages.static import picklescan as picklescan_mod  # noqa: F401
+from .util.io import load_json
 
 log = logging.getLogger(__name__)
 
@@ -47,13 +48,20 @@ def _static_steps() -> list[tuple[str, object]]:
 def run_static(ctx: ScanContext) -> list[str]:
     ctx.scan_dir.mkdir(parents=True, exist_ok=True)
     ctx.raw_dir.mkdir(exist_ok=True)
+    steps = _static_steps()
     if ctx.is_local_source:
         _symlink_local(ctx)
-    else:
-        ctx.weights_dir.mkdir(exist_ok=True)
-        _download_weights(ctx)
+        return _run_steps(ctx, steps)
+    # 01_metadata resolves --revision to a commit SHA; weights are then fetched by that SHA.
+    skipped = _run_steps(ctx, steps[:1])
+    ctx.weights_dir.mkdir(exist_ok=True)
+    _download_weights(ctx)
+    return skipped + _run_steps(ctx, steps[1:])
+
+
+def _run_steps(ctx: ScanContext, steps: list[tuple[str, object]]) -> list[str]:
     skipped = []
-    for label, mod in _static_steps():
+    for label, mod in steps:
         log.info("===== %s =====", label)
         r = mod.run(ctx)
         if not r.ran:
@@ -62,10 +70,12 @@ def run_static(ctx: ScanContext) -> list[str]:
 
 
 def _download_weights(ctx: ScanContext) -> None:
-    rev = ctx.revision or "main"
+    sha = (load_json(ctx.raw_dir / "01_metadata.json") or {}).get("sha")
+    if not sha:
+        raise RuntimeError("cannot pin weights: 01_metadata.json has no resolved commit SHA")
     snapshot_download(
         repo_id=ctx.repo,
-        revision=rev,
+        revision=sha,
         local_dir=str(ctx.weights_dir),
         local_dir_use_symlinks=False,
         token=os.environ.get("HF_TOKEN"),

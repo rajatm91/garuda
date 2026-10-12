@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .context import ScanContext
 from .manifest import Manifest, save_manifest
+from .util.io import load_json
 
 
 def _add_static_args(p: argparse.ArgumentParser) -> None:
@@ -61,6 +62,7 @@ def _run_static(args: argparse.Namespace) -> Path | None:
     save_manifest(m)
     t0 = time.monotonic()
     skipped = run_static(ctx)
+    m.resolved_sha = (load_json(ctx.raw_dir / "01_metadata.json") or {}).get("sha")
     m.mark_static_done(duration_s=time.monotonic() - t0, skipped_steps=skipped)
     save_manifest(m)
     print(f"Scan dir: {scan_dir}")

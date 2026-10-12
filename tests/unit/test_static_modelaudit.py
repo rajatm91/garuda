@@ -23,6 +23,26 @@ def test_modelaudit_runs_and_writes_output(tmp_path: Path):
     assert "modelaudit" in argv[0] and "scan" in argv
 
 
+def test_modelaudit_exit_1_with_findings_counts_as_ran(tmp_path: Path):
+    ctx = _ctx(tmp_path); ctx.raw_dir.mkdir(); ctx.weights_dir.mkdir()
+    with patch("garuda.stages.static.modelaudit.run_tool") as rt, \
+         patch("shutil.which", return_value="/usr/bin/modelaudit"):
+        rt.return_value.exit_code = 1
+        (ctx.raw_dir / "04_modelaudit.json").write_text('{"issues":[{"severity":"critical"}]}')
+        r = step.run(ctx)
+    assert r.ran is True
+
+
+def test_modelaudit_exit_2_is_skip(tmp_path: Path):
+    ctx = _ctx(tmp_path); ctx.raw_dir.mkdir(); ctx.weights_dir.mkdir()
+    with patch("garuda.stages.static.modelaudit.run_tool") as rt, \
+         patch("shutil.which", return_value="/usr/bin/modelaudit"):
+        rt.return_value.exit_code = 2
+        r = step.run(ctx)
+    assert r.ran is False
+    assert json.loads(r.output_path.read_text())["skipped"] == "modelaudit exit=2"
+
+
 def test_modelaudit_missing_binary_writes_stub(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir(); ctx.weights_dir.mkdir()
     with patch("shutil.which", return_value=None):

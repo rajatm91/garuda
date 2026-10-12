@@ -489,6 +489,7 @@ dependencies = [
     { name = "picklescan" },
     { name = "pip-audit" },
     { name = "pip-licenses" },
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -507,6 +508,7 @@ requires-dist = [
     { name = "picklescan", specifier = ">=0.0.20" },
     { name = "pip-audit", specifier = ">=2.7" },
     { name = "pip-licenses", specifier = ">=4.4" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [package.metadata.requires-dev]

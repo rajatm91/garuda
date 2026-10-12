@@ -27,7 +27,8 @@ def run(ctx: ScanContext) -> StageResult:
                    [BIN, "scan", str(ctx.weights_dir), "--format", "json",
                     "--output", str(out_path)],
                    stderr_path=stderr, cwd=ctx.scan_dir)
-    if res.exit_code != 0:
+    # modelaudit exits 1 when it finds issues (a completed scan), 2 on operational errors.
+    if res.exit_code not in (0, 1) or not out_path.exists():
         reason = f"{BIN} exit={res.exit_code}"
         if not out_path.exists():
             write_stub(out_path, reason)

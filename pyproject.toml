@@ -13,6 +13,7 @@ dependencies = [
   "picklescan>=0.0.20",
   "pip-audit>=2.7",
   "pip-licenses>=4.4",
+  "pyyaml>=6.0",
 ]
 
 [project.scripts]
