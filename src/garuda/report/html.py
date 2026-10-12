@@ -119,7 +119,7 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
     meta = load_json(scan_dir / "raw" / "01_metadata.json") or {}
     sha_inv = load_json(scan_dir / "raw" / "02_sha256.json") or {"files": []}
     fmt = load_json(scan_dir / "raw" / "03_format_inventory.json") or {}
-    licenses = load_json(scan_dir / "raw" / "07_pip_licenses.json") or []
+    licenses = load_json(scan_dir / "raw" / "07_licenses.json") or {}
 
     # Aggregate counts
     level_counts: Counter = Counter()
@@ -267,33 +267,32 @@ review by InfoSec and the Model Review &amp; Management Committee.</p>
 </div>
 """)
 
-    # 5. License inventory (Python deps)
-    parts.append('<h2 id="licenses">5. Python Dependency License Inventory</h2>')
-    if isinstance(licenses, list) and licenses:
-        risky = [
-            l for l in licenses
-            if str(l.get("License", "")).upper()
-            in ("GPL", "AGPL", "GPLV2", "GPLV3", "GPL-2.0", "GPL-3.0", "AGPL-3.0", "UNKNOWN")
-        ]
-        if risky:
-            parts.append(
-                f'<p><strong>{len(risky)} package(s) with copyleft or unknown licenses</strong> '
-                f"— review with Legal before redistribution.</p>"
-            )
+    # 5. License inventory (what the model ships + what its card declares)
+    parts.append('<h2 id="licenses">5. Model License Inventory</h2>')
+    declared = (licenses.get("declared") or {}) if isinstance(licenses, dict) else {}
+    lic_files = (licenses.get("files") or []) if isinstance(licenses, dict) else []
+    parts.append(f"""
+<dl class="kv">
+  <dt>Declared (model card)</dt><dd>{_esc(declared.get("license") or "not declared")}</dd>
+  <dt>License name</dt><dd>{_esc(declared.get("license_name") or "—")}</dd>
+  <dt>License link</dt><dd>{_esc(declared.get("license_link") or "—")}</dd>
+</dl>
+""")
+    if lic_files:
         lic_rows = "".join(
-            f"<tr><td>{_esc(l.get('Name'))}</td><td>{_esc(l.get('Version'))}</td>"
-            f"<td>{_esc(l.get('License'))}</td></tr>"
-            for l in licenses[:200]
+            f"<tr><td><code>{_esc(f.get('path'))}</code></td><td>{_esc(f.get('first_line'))}</td>"
+            f"<td><code>{_esc((f.get('sha256') or '')[:12])}…</code></td></tr>"
+            for f in lic_files
         )
         parts.append(f"""
-<details><summary>Show {len(licenses)} packages</summary>
 <div class="scrollx"><table>
-<thead><tr><th>Package</th><th>Version</th><th>License</th></tr></thead>
+<thead><tr><th>File</th><th>First line</th><th>SHA-256</th></tr></thead>
 <tbody>{lic_rows}</tbody></table></div>
-</details>
+<p>Attach these files to the Legal review request; do not rely on the summary line.</p>
 """)
     else:
-        parts.append('<div class="empty">No license inventory produced (pip-licenses unavailable).</div>')
+        parts.append('<div class="empty">Model ships no LICENSE / NOTICE / COPYING file — '
+                     'only the model-card declaration above is available.</div>')
 
     # 6. Attestation
     parts.append(f"""

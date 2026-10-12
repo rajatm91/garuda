@@ -25,6 +25,8 @@ def build_pip_audit_run(scan_dir: Path) -> dict | None:
                         "fix_versions": fixes,
                         "aliases": v.get("aliases", []),
                     },
+                    **({"locations": [{"physicalLocation": {"artifactLocation": {
+                        "uri": dep["requirements_file"]}}}]} if dep.get("requirements_file") else {}),
                 }
             )
     return {

@@ -56,7 +56,7 @@ rm -rf scan_*/weights/
 Step 11 provenance flags (all optional):
 
 - `--expect-publisher ORG` — error if the repo owner differs. Without it, unverified orgs / user accounts are warnings.
-- `--signer-identity ID --signer-issuer URL` — verify `model.sig` (OpenSSF model-signing / Sigstore) against this signer. Without them a present signature is reported as *unpinned* (warning) with the signer identity found in it.
+- `--signer-identity ID --signer-issuer URL` — verify `model.sig` (OpenSSF model-signing / Sigstore) against this signer; when pinned, a failed or impossible (e.g. offline) verification and any file the signature does not cover are errors. Without them a present signature is reported as *unpinned* (warning) with the signer identity found in it.
 
 ---
 
@@ -111,8 +111,8 @@ Pipeline state. `stages.static.skipped_steps` lists steps whose tool was absent 
 | `03_format_inventory.json` | safetensors vs unsafe-format |
 | `04_modelaudit.json` | modelaudit |
 | `05_picklescan.json` | second-opinion file-format scan |
-| `06_pip_audit.json` | Python dep CVE |
-| `07_pip_licenses.json` | Python dep licences |
+| `06_pip_audit.json` | CVEs in `requirements*.txt` the model ships (skipped if none) |
+| `07_licenses.json` | license files the model ships + declared license |
 | `08_sbom.{cdx,spdx}.json` | syft SBOM |
 | `09_grype.{json,sarif}` | grype CVE |
 | `10_gitleaks.{json,sarif}` | gitleaks secrets |

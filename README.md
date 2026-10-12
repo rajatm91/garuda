@@ -63,8 +63,8 @@ Every run creates `scan_<repo>_<UTC>/`:
 | 03 | `03_format_inventory.json` | stdlib | safetensors vs unsafe (pickle) formats |
 | 04 | `04_modelaudit.json` | modelaudit | Malicious-payload scan across model formats |
 | 05 | `05_picklescan.json` | picklescan | Second-opinion scan of pickle files |
-| 06 | `06_pip_audit.json` | pip-audit | Python dependency CVEs |
-| 07 | `07_pip_licenses.json` | pip-licenses | Dependency license inventory |
+| 06 | `06_pip_audit.json` | pip-audit | CVEs in `requirements*.txt` the model ships (skipped if none) |
+| 07 | `07_licenses.json` | stdlib | LICENSE / NOTICE / COPYING files the model ships + model-card declared license |
 | 08 | `08_sbom.{cdx,spdx}.json` | syft | SBOM |
 | 09 | `09_grype.{json,sarif}` | grype | CVEs from SBOM |
 | 10 | `10_gitleaks.{json,sarif}` | gitleaks | Secrets |
@@ -75,7 +75,7 @@ Missing tool → `{"skipped": ...}` stub; step listed in `manifest.json` `stages
 Step 11 provenance flags (all optional):
 
 - `--expect-publisher ORG` — error if the repo owner differs. Without it, unverified orgs / user accounts are warnings.
-- `--signer-identity ID --signer-issuer URL` — verify `model.sig` (OpenSSF model-signing / Sigstore) against this signer. Without them a present signature is reported as *unpinned* (warning) with the signer identity found in it.
+- `--signer-identity ID --signer-issuer URL` — verify `model.sig` (OpenSSF model-signing / Sigstore) against this signer; when pinned, a failed or impossible (e.g. offline) verification and any file the signature does not cover are errors. Without them a present signature is reported as *unpinned* (warning) with the signer identity found in it.
 
 ## 6. NOT covered
 
