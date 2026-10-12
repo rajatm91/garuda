@@ -31,3 +31,24 @@ def test_verified_org_and_signature(tmp_path):
         "publisher": {"owner": "acme", "expected": "ACME", "kind": "org", "is_verified": True},
     })
     assert got == {("PROV002", "note"), ("PROV010", "note"), ("PROV022", "note")}
+
+
+def test_publisher_mismatch_survives_lookup_failure(tmp_path):
+    got = _run(tmp_path, {
+        "publisher": {"owner": "evil", "expected": "acme", "lookup_error": "ConnectionError"},
+    })
+    assert got == {("PROV020", "error"), ("PROV021", "warning")}
+
+
+def test_pinned_signature_gaps_are_errors(tmp_path):
+    got = _run(tmp_path, {
+        "signature": {"status": "verified", "file": "model.sig", "expected_identity": "dev@acme.com",
+                      "unsigned_files": ["extra.bin"]},
+    })
+    assert got == {("PROV010", "note"), ("PROV015", "error")}
+    (tmp_path / "raw" / "11_provenance.json").write_text(json.dumps({
+        "signature": {"status": "error", "file": "model.sig", "expected_identity": "x",
+                      "error": "offline", "unsigned_files": []}}))
+    run = build_provenance_run(tmp_path)
+    assert run is not None
+    assert [(r["ruleId"], r["level"]) for r in run["results"]] == [("PROV014", "error")]

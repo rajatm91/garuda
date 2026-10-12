@@ -22,8 +22,10 @@ RULES = {
 }
 
 
-def _res(rule: str, msg: str, *, uri: str | None = None, props: dict | None = None) -> dict:
-    r: dict[str, Any] = {"ruleId": rule, "level": RULES[rule][1], "message": {"text": msg}}
+def _res(rule: str, msg: str, *, uri: str | None = None, props: dict | None = None,
+         level: str | None = None) -> dict:
+    r: dict[str, Any] = {"ruleId": rule, "level": level or RULES[rule][1],
+                         "message": {"text": msg}}
     if uri:
         r["locations"] = [{"physicalLocation": {"artifactLocation": {"uri": uri}}}]
     if props:
@@ -68,6 +70,8 @@ def _hashes(h: dict) -> list[dict]:
 
 def _signature(s: dict) -> list[dict]:
     status, f = s.get("status"), s.get("file")
+    # signer pinned by the operator → anything short of a clean verify must block (error)
+    pinned_level = "error" if s.get("expected_identity") else None
     who = f"{s.get('identity') or 'unknown signer'} (issuer {s.get('issuer') or 'unknown'})"
     if status == "absent":
         out = [_res("PROV013", "Model ships no model.sig signature.")]
@@ -79,10 +83,11 @@ def _signature(s: dict) -> list[dict]:
     elif status == "failed":
         out = [_res("PROV011", f"model.sig failed verification: {s.get('error')}", uri=f)]
     elif status == "error":
-        out = [_res("PROV014", f"model.sig not verified: {s.get('error')}", uri=f)]
+        out = [_res("PROV014", f"model.sig not verified: {s.get('error')}", uri=f,
+                    level=pinned_level)]
     else:
         out = []
-    out += [_res("PROV015", f"{p}: not covered by model.sig", uri=p)
+    out += [_res("PROV015", f"{p}: not covered by model.sig", uri=p, level=pinned_level)
             for p in s.get("unsigned_files", [])]
     return out
 
@@ -96,7 +101,10 @@ def _publisher(p: dict) -> list[dict]:
     if expected and owner.lower() != expected.lower():
         out.append(_res("PROV020", f"Repo owner '{owner}' is not expected publisher '{expected}'.",
                         props=props))
-    if p.get("kind") == "org" and p.get("is_verified"):
+    if p.get("lookup_error"):
+        out.append(_res("PROV021", f"Could not look up publisher '{owner}': "
+                                   f"{p['lookup_error']}", props=props))
+    elif p.get("kind") == "org" and p.get("is_verified"):
         out.append(_res("PROV022", f"'{owner}' is a verified HF organization.", props=props))
     else:
         kind = "an individual user account" if p.get("kind") == "user" else "an unverified org"

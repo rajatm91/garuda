@@ -83,12 +83,16 @@ def test_signature_unpinned_reports_signer_and_unsigned_files(tmp_path: Path):
     (ctx.weights_dir / "model.sig").write_text(_bundle())
     (ctx.weights_dir / "model.safetensors").write_bytes(b"w")
     (ctx.weights_dir / "extra.bin").write_bytes(b"x")
+    # look-alikes of ignored names must still be reported
+    (ctx.weights_dir / "model.sig.bin").write_bytes(b"x")
+    (ctx.weights_dir / ".gitignore_x.safetensors").write_bytes(b"x")
+    (ctx.weights_dir / ".gitattributes").write_text("")
     (ctx.weights_dir / ".cache" / "huggingface").mkdir(parents=True)
     (ctx.weights_dir / ".cache" / "huggingface" / "x.lock").write_text("")
     sig = step._signature(ctx)
     assert sig["status"] == "unpinned"
     assert sig["identity"] == "dev@acme.com" and sig["issuer"] == ISSUER
-    assert sig["unsigned_files"] == ["extra.bin"]
+    assert sig["unsigned_files"] == [".gitignore_x.safetensors", "extra.bin", "model.sig.bin"]
 
 
 def test_signature_pinned_outcomes(tmp_path: Path):
@@ -119,3 +123,13 @@ def test_publisher_org_then_user_fallback(tmp_path: Path):
     with patch.object(step, "HfApi", return_value=api):
         p = step._publisher(ctx)
     assert p["kind"] == "user" and p["is_verified"] is False
+
+
+def test_publisher_lookup_failure_keeps_owner_and_expected(tmp_path: Path):
+    ctx = _ctx(tmp_path, expect_publisher="acme")
+    api = MagicMock()
+    api.get_organization_overview.side_effect = ConnectionError("offline")
+    with patch.object(step, "HfApi", return_value=api):
+        p = step._publisher(ctx)
+    assert p["owner"] == "acme" and p["expected"] == "acme"
+    assert "offline" in p["lookup_error"]

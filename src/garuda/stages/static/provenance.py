@@ -21,8 +21,10 @@ SIG_FILE = "model.sig"
 # Fulcio cert extensions carrying the OIDC issuer (v2 = DER UTF8String, v1 = raw bytes).
 _ISSUER_V2 = "1.3.6.1.4.1.57264.1.8"
 _ISSUER_V1 = "1.3.6.1.4.1.57264.1.1"
-# Files that are never part of a model's signed content.
-_NOT_MODEL = (".cache/", ".git/", ".gitattributes", ".gitignore", SIG_FILE)
+# Never part of a model's signed content. Exact names vs dir prefixes kept separate so
+# e.g. "model.sig.bin" or ".gitignore_x.safetensors" can't hide from the unsigned list.
+_NOT_MODEL_FILES = {".gitattributes", ".gitignore", SIG_FILE}
+_NOT_MODEL_DIRS = (".cache/", ".git/")
 
 
 def run(ctx: ScanContext) -> StageResult:
@@ -33,7 +35,7 @@ def run(ctx: ScanContext) -> StageResult:
     data = {
         "hash_check": {"skipped": local} if ctx.is_local_source else _hash_check(ctx),
         "signature": _guard(_signature, ctx),
-        "publisher": {"skipped": local} if ctx.is_local_source else _guard(_publisher, ctx),
+        "publisher": {"skipped": local} if ctx.is_local_source else _publisher(ctx),
     }
     write_json(out_path, data)
     return StageResult(ran=True, duration_s=time.monotonic() - t0,
@@ -131,20 +133,28 @@ def _unsigned_files(root: Path, signed: set[str]) -> list[str]:
         str(Path(dp, f).relative_to(root))
         for dp, _, files in os.walk(root) for f in files
     )
-    return sorted(p for p in present if p not in signed and not p.startswith(_NOT_MODEL))
+    return sorted(
+        p for p in present
+        if p not in signed and p not in _NOT_MODEL_FILES and not p.startswith(_NOT_MODEL_DIRS)
+    )
 
 
 def _publisher(ctx: ScanContext) -> dict[str, Any]:
+    # owner/expected need no network, so the expected-publisher check survives lookup failures
     owner = ctx.repo.split("/")[0]
-    api = HfApi(token=os.environ.get("HF_TOKEN"))
     out: dict[str, Any] = {"owner": owner, "expected": ctx.expect_publisher}
+    api = HfApi(token=os.environ.get("HF_TOKEN"))
     try:
-        org = api.get_organization_overview(owner)
-        out |= {"kind": "org", "is_verified": bool(org.is_verified),
-                "num_models": org.num_models, "num_followers": org.num_followers}
-    except HfHubHTTPError:  # not an org → try as a user account
-        user = api.get_user_overview(owner)
-        out |= {"kind": "user", "is_verified": False,
-                "num_models": user.num_models, "num_followers": user.num_followers,
-                "created_at": getattr(user, "createdAt", None)}
+        try:
+            org = api.get_organization_overview(owner)
+            out |= {"kind": "org", "is_verified": bool(org.is_verified),
+                    "num_models": org.num_models, "num_followers": org.num_followers}
+        except HfHubHTTPError:  # not an org → try as a user account
+            user = api.get_user_overview(owner)
+            out |= {"kind": "user", "is_verified": False,
+                    "num_models": user.num_models, "num_followers": user.num_followers,
+                    "created_at": getattr(user, "createdAt", None)}
+    except Exception as e:  # noqa: BLE001 — record, don't drop the whole check
+        log.warning("publisher lookup failed: %s", e)
+        out["lookup_error"] = f"{type(e).__name__}: {e}"
     return out
