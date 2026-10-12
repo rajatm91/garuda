@@ -504,7 +504,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.24" },
-    { name = "modelaudit", specifier = ">=0.1" },
+    { name = "modelaudit", specifier = ">=0.2.14" },
     { name = "picklescan", specifier = ">=0.0.20" },
     { name = "pip-audit", specifier = ">=2.7" },
     { name = "pip-licenses", specifier = ">=4.4" },
