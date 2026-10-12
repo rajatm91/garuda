@@ -8,12 +8,13 @@ import time
 from pathlib import Path
 
 from ...context import ScanContext, StageResult
-from ...util.io import load_json, write_json, write_stub
+from ...util.io import load_json, model_files, write_json, write_stub
 from ...util.proc import run_tool
 
 log = logging.getLogger(__name__)
 OUT = "06_pip_audit.json"
 BIN = "pip-audit"
+MAX_REQ_BYTES = 1_000_000
 # The model repo is untrusted: its requirements file must never steer pip (custom index,
 # includes, editables, URLs/paths). Only plain `name==version` pins are audited, and
 # pip-audit runs with --disable-pip --no-deps so nothing is downloaded, built or installed.
@@ -23,6 +24,8 @@ _PINNED = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9._,-]+\])?\s*==\s
 
 def unsafe_lines(req: Path) -> list[str]:
     """Lines that are not plain pins (comments/blank lines allowed)."""
+    if req.stat().st_size > MAX_REQ_BYTES:
+        return [f"<file larger than {MAX_REQ_BYTES} bytes>"]
     bad = []
     for raw in req.read_text(errors="replace").splitlines():
         line = raw.split(" #", 1)[0].strip()
@@ -32,10 +35,7 @@ def unsafe_lines(req: Path) -> list[str]:
 
 
 def requirements_files(weights_dir: Path) -> list[Path]:
-    return sorted(
-        p for p in weights_dir.rglob("requirements*.txt")
-        if ".cache" not in p.relative_to(weights_dir).parts
-    )
+    return model_files(weights_dir, "requirements*.txt")
 
 
 def run(ctx: ScanContext) -> StageResult:

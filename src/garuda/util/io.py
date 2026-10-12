@@ -27,3 +27,19 @@ def write_json(path: Path, data: Any, indent: int = 2) -> None:
 def write_stub(path: Path, reason: str) -> None:
     """Write a {'skipped': reason} stub for soft-failed / missing-tool steps."""
     write_json(path, {"skipped": reason})
+
+
+def model_files(root: Path, pattern: str) -> list[Path]:
+    """Regular files under root matching pattern that really belong to the model.
+
+    Model content is untrusted: skip symlinks and anything resolving outside root (a
+    shipped ``requirements.txt -> ~/.ssh/config`` must not leak host files into the
+    report), and the HF download cache.
+    """
+    real_root = root.resolve()
+    return sorted(
+        p for p in root.rglob(pattern)
+        if ".cache" not in p.relative_to(root).parts
+        and not p.is_symlink() and p.is_file()
+        and p.resolve().is_relative_to(real_root)
+    )

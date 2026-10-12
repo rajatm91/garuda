@@ -83,3 +83,23 @@ def test_never_installs_and_refuses_pip_steering_lines(tmp_path: Path):
     assert sorted(f["file"] for f in out["failed"]) == [
         "requirements-evil.txt", "requirements-unpinned.txt", "requirements-url.txt"]
     assert r.ran is False  # refused files mean the audit is incomplete
+
+
+def test_symlinked_requirements_never_read(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    secret = tmp_path / "host_secret"
+    secret.write_text("TOKEN=hunter2\n")
+    (ctx.weights_dir / "requirements.txt").symlink_to(secret)
+    r = step.run(ctx)
+    assert r.skip_reason == "model ships no requirements*.txt"
+    assert "hunter2" not in r.output_path.read_text()
+
+
+def test_oversized_requirements_refused(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    (ctx.weights_dir / "requirements.txt").write_text("torch==2.0\n" * 200_000)
+    with patch("garuda.stages.static.pip_audit.run_tool") as rt, \
+         patch("shutil.which", return_value="/usr/bin/pip-audit"):
+        r = step.run(ctx)
+    rt.assert_not_called()
+    assert r.ran is False

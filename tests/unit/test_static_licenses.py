@@ -28,3 +28,14 @@ def test_no_license_files(tmp_path: Path):
     ctx.raw_dir.mkdir(); ctx.weights_dir.mkdir()
     out = json.loads(step.run(ctx).output_path.read_text())
     assert out["files"] == [] and out["declared"]["license"] is None
+
+
+def test_symlinks_and_outside_files_are_ignored(tmp_path: Path):
+    ctx = ScanContext(scan_dir=tmp_path / "scan", repo="x", revision=None, local_path=None)
+    ctx.raw_dir.mkdir(parents=True); ctx.weights_dir.mkdir()
+    secret = tmp_path / "host_secret"
+    secret.write_text("TOKEN=hunter2\n")
+    (ctx.weights_dir / "LICENSE").symlink_to(secret)
+    out = json.loads(step.run(ctx).output_path.read_text())
+    assert out["files"] == []
+    assert "hunter2" not in json.dumps(out)
