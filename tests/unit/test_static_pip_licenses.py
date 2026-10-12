@@ -23,4 +23,4 @@ def test_pip_licenses_missing_binary_writes_stub(tmp_path: Path):
     with patch("shutil.which", return_value=None):
         r = step.run(ctx)
     assert r.ran is False
-    assert "not installed" in r.skip_reason
+    assert r.skip_reason and "not installed" in r.skip_reason

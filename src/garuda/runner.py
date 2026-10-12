@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from types import ModuleType
 
 from huggingface_hub import snapshot_download
 
@@ -28,7 +29,7 @@ from .util.io import load_json
 log = logging.getLogger(__name__)
 
 
-def _static_steps() -> list[tuple[str, object]]:
+def _static_steps() -> list[tuple[str, ModuleType]]:
     """Resolve step modules via current module attributes so they are mock-friendly."""
     import sys
     m = sys.modules[__name__]
@@ -60,7 +61,7 @@ def run_static(ctx: ScanContext) -> list[str]:
     return skipped + _run_steps(ctx, steps[1:])
 
 
-def _run_steps(ctx: ScanContext, steps: list[tuple[str, object]]) -> list[str]:
+def _run_steps(ctx: ScanContext, steps: list[tuple[str, ModuleType]]) -> list[str]:
     skipped = []
     for label, mod in steps:
         log.info("===== %s =====", label)

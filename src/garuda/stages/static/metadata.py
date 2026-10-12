@@ -23,7 +23,7 @@ def run(ctx: ScanContext) -> StageResult:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.monotonic()
     try:
-        data = _from_local(ctx.local_path, ctx.repo) if ctx.is_local_source \
+        data = _from_local(ctx.local_path, ctx.repo) if ctx.local_path is not None \
                else _from_hf(ctx.repo, ctx.revision or "main")
         write_json(out_path, data)
         return StageResult(ran=True, duration_s=time.monotonic() - t0,

@@ -28,4 +28,4 @@ def test_missing_sha_input_writes_stub(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
     r = step.run(ctx)
     assert r.ran is False
-    assert "02_sha256.json" in r.skip_reason
+    assert r.skip_reason and "02_sha256.json" in r.skip_reason
