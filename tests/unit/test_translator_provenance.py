@@ -52,3 +52,10 @@ def test_pinned_signature_gaps_are_errors(tmp_path):
     run = build_provenance_run(tmp_path)
     assert run is not None
     assert [(r["ruleId"], r["level"]) for r in run["results"]] == [("PROV014", "error")]
+
+
+def test_tool_name(tmp_path):
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "11_provenance.json").write_text(json.dumps({"signature": {"status": "absent"}}))
+    run = build_provenance_run(tmp_path)
+    assert run is not None and run["tool"]["driver"]["name"] == "os-llm-model-provenance"

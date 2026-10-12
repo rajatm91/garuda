@@ -127,11 +127,10 @@ SARIF 2.1.0, one `run` per tool (grype + gitleaks native SARIF embedded verbatim
 Self-contained. Inlined CSS, no CDN. Attach to ticket. Sections:
 
 1. Executive summary
-2. Model identity
+2. Model identity (overview: name, version, provider, architecture, parameters, context window, modality, license)
 3. Integrity & format inventory
 4. Findings by tool
-5. License inventory
-6. Attestation
+5. Model license inventory
 
 ---
 

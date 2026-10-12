@@ -1,4 +1,4 @@
-"""HTML report renderer — ports legacy to_html.py."""
+"""HTML report renderer — self-contained (inline CSS + SVG, no external assets)."""
 from __future__ import annotations
 
 import html
@@ -8,69 +8,223 @@ from pathlib import Path
 from typing import Any
 
 from ..util.io import load_json
+from .model_card import model_summary
 
 # ---------------------------------------------------------------------------
-# CSS — embedded, no external deps
+# CSS — embedded, no external deps. Light theme only (+ print).
 # ---------------------------------------------------------------------------
 CSS = """
 :root {
-  --bg: #ffffff; --fg: #1a1a1a; --muted: #6b7280; --border: #e5e7eb;
-  --card: #f9fafb; --accent: #1f3864;
-  --err-bg: #fef2f2; --err-fg: #991b1b; --err-bd: #fecaca;
-  --warn-bg: #fffbeb; --warn-fg: #92400e; --warn-bd: #fde68a;
-  --note-bg: #eff6ff; --note-fg: #1e40af; --note-bd: #bfdbfe;
-  --ok-bg: #f0fdf4;   --ok-fg: #166534;   --ok-bd: #bbf7d0;
+  --bg: #f4f6fb; --surface: #ffffff; --surface-2: #f8fafc; --fg: #0f172a; --muted: #5b6577;
+  --border: #e3e8f0; --primary: #1e40af; --primary-2: #3b82f6; --hero: #0b1736; --hero-2: #1e3a8a;
+  --err: #b91c1c; --err-bg: #fef2f2; --err-bd: #fecaca;
+  --warn: #b45309; --warn-bg: #fffbeb; --warn-bd: #fde68a;
+  --note: #1d4ed8; --note-bg: #eff6ff; --note-bd: #bfdbfe;
+  --ok: #15803d; --ok-bg: #f0fdf4; --ok-bd: #bbf7d0;
+  --shadow: 0 1px 2px rgba(15,23,42,.06), 0 4px 12px rgba(15,23,42,.05);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
-body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-       color: var(--fg); background: var(--bg); margin: 0; padding: 0; }
-.wrap { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
-header { border-bottom: 1px solid var(--border); padding-bottom: 18px; margin-bottom: 24px; }
-header h1 { margin: 0 0 6px; font-size: 24px; color: var(--accent); }
-header .sub { color: var(--muted); font-size: 13px; }
-h2 { font-size: 18px; margin: 32px 0 12px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
-h3 { font-size: 15px; margin: 18px 0 8px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
-.card .n { font-size: 26px; font-weight: 600; }
-.card .l { font-size: 12px; color: var(--muted); margin-top: 4px; }
-.kv { display: grid; grid-template-columns: 180px 1fr; gap: 4px 16px; margin: 8px 0; font-size: 13px; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue",
+        Arial, sans-serif; font-variant-numeric: tabular-nums; }
+a { color: var(--primary); }
+code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2);
+  border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; word-break: break-all; }
+.icon { width: 16px; height: 16px; flex: none; vertical-align: -3px; }
+
+/* hero */
+.hero { background: linear-gradient(135deg, var(--hero) 0%, var(--hero-2) 100%); color: #fff;
+  padding: 36px 24px 28px; }
+.hero .inner, .nav .inner, main { max-width: 1160px; margin: 0 auto; }
+.eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; opacity: .75;
+  display: flex; align-items: center; gap: 8px; }
+.hero h1 { margin: 8px 0 6px; font-size: 30px; line-height: 1.2; font-weight: 700;
+  word-break: break-word; }
+.hero .meta { opacity: .85; font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.hero .meta code { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.18);
+  color: #fff; }
+.hero .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px;
+  flex-wrap: wrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.chip { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+  border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.chip b { font-weight: 600; opacity: .7; margin-right: 6px; }
+.verdict { display: inline-flex; align-items: center; gap: 10px; border-radius: 12px;
+  padding: 12px 18px; font-weight: 700; letter-spacing: .04em; font-size: 15px;
+  border: 1px solid; background: #fff; }
+.verdict small { display: block; font-weight: 500; letter-spacing: 0; font-size: 12px; opacity: .8; }
+.verdict.fail { color: #991b1b; border-color: #fecaca; }
+.verdict.review { color: #92400e; border-color: #fde68a; }
+.verdict.pass { color: #166534; border-color: #bbf7d0; }
+
+/* nav */
+.nav { position: sticky; top: 0; z-index: 10; background: var(--surface);
+  border-bottom: 1px solid var(--border); box-shadow: var(--shadow); }
+.nav .inner { display: flex; gap: 4px; overflow-x: auto; padding: 0 16px; }
+.nav a { color: var(--muted); text-decoration: none; padding: 12px 12px; font-size: 14px;
+  font-weight: 500; white-space: nowrap; border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s; }
+.nav a:hover, .nav a:focus-visible { color: var(--primary); border-bottom-color: var(--primary); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--primary-2); outline-offset: 2px;
+  border-radius: 4px; }
+
+main { padding: 8px 24px 48px; }
+section { scroll-margin-top: 64px; }
+h2 { font-size: 20px; margin: 36px 0 14px; display: flex; align-items: center; gap: 10px; }
+h2 .num { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px;
+  background: var(--primary); color: var(--surface); font-size: 14px; }
+h3 { font-size: 15px; margin: 0 0 10px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 20px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.sub { color: var(--muted); font-size: 13px; margin: -6px 0 14px; }
+
+/* kpis */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 16px; box-shadow: var(--shadow); border-top: 4px solid var(--border); }
+.kpi .n { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.kpi .l { color: var(--muted); font-size: 13px; margin-top: 6px; display: flex; gap: 6px;
+  align-items: center; }
+.kpi.err { border-top-color: var(--err); } .kpi.err .n { color: var(--err); }
+.kpi.warn { border-top-color: var(--warn); } .kpi.warn .n { color: var(--warn); }
+.kpi.note { border-top-color: var(--note); } .kpi.note .n { color: var(--note); }
+.kpi.ok { border-top-color: var(--ok); } .kpi.ok .n { color: var(--ok); }
+.kpi.neutral { border-top-color: var(--primary); }
+
+.dist { display: flex; height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border); margin: 6px 0 10px; }
+.dist span { display: block; height: 100%; }
+.dist .e { background: var(--err); } .dist .w { background: var(--warn); }
+.dist .i { background: var(--note); opacity: .55; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+  margin-right: 6px; vertical-align: -1px; }
+
+/* facts */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.fact { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; min-width: 0; }
+.fact .k { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: var(--muted);
+  font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.fact .v { font-size: 17px; font-weight: 600; margin-top: 4px; word-break: break-word; }
+.fact .v code { font-size: 14.5px; background: none; border: 0; padding: 0; word-break: break-all; }
+.fact .d { font-size: 13px; color: var(--muted); margin-top: 2px; word-break: break-word; }
+.fact.wide { grid-column: 1 / -1; }
+
+.kv { display: grid; grid-template-columns: 190px 1fr; gap: 8px 18px; margin: 0; font-size: 14px; }
 .kv dt { color: var(--muted); }
-.kv dd { margin: 0; word-break: break-all; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
-th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-th { background: var(--card); font-weight: 600; }
-tr:hover td { background: #fafafa; }
-code { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 12px;
-       background: var(--card); padding: 1px 5px; border-radius: 3px; }
-.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
-         font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-.badge.err  { background: var(--err-bg);  color: var(--err-fg);  border: 1px solid var(--err-bd); }
-.badge.warn { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-bd); }
-.badge.note { background: var(--note-bg); color: var(--note-fg); border: 1px solid var(--note-bd); }
-.badge.ok   { background: var(--ok-bg);   color: var(--ok-fg);   border: 1px solid var(--ok-bd); }
-.tool { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-        padding: 16px; margin: 12px 0; }
-.tool h3 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
-.tool .meta { color: var(--muted); font-size: 12px; font-weight: normal; }
-.empty { color: var(--muted); font-style: italic; padding: 8px 0; }
-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border);
-         color: var(--muted); font-size: 12px; }
-.toc { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-       padding: 12px 18px; margin-bottom: 24px; }
-.toc ol { margin: 4px 0; padding-left: 20px; }
-.toc a { color: var(--accent); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
-details { margin: 6px 0; }
-summary { cursor: pointer; color: var(--accent); font-weight: 500; }
-.scrollx { overflow-x: auto; }
-@media print { .wrap { max-width: none; } .tool { break-inside: avoid; } }
+.kv dd { margin: 0; word-break: break-word; }
+
+/* tables */
+.scrollx { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+  vertical-align: top; }
+th { background: var(--surface-2); font-weight: 600; color: var(--muted); font-size: 12px;
+  text-transform: uppercase; letter-spacing: .06em; position: sticky; top: 0; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--surface-2); }
+td.num, th.num { text-align: right; }
+.props { color: var(--muted); font-size: 12px; margin-top: 4px; }
+td.rule code { white-space: nowrap; word-break: normal; }
+td.loc { color: var(--muted); font-size: 13px; }
+td.loc code { word-break: break-word; }
+td.loc .ln { display: block; font-size: 12px; margin-top: 2px; }
+ul.locs { columns: 2 260px; margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; }
+
+/* badges */
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px;
+  border-radius: 999px; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; border: 1px solid; white-space: nowrap; }
+.badge .icon { width: 13px; height: 13px; vertical-align: 0; }
+.badge.err { background: var(--err-bg); color: var(--err); border-color: var(--err-bd); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-bd); }
+.badge.note { background: var(--note-bg); color: var(--note); border-color: var(--note-bd); }
+.badge.ok { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-bd); }
+.badge.zero { opacity: .45; }
+
+/* tool cards */
+.tool { background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow); margin-bottom: 14px; overflow: hidden; }
+.tool > header { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); }
+.tool > header h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.tool > header .ver { color: var(--muted); font-weight: 400; font-size: 13px; }
+.tool .counts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tool .body { padding: 14px 18px; }
+.tool .body .scrollx { margin-top: 0; }
+
+details { margin-top: 10px; }
+summary { cursor: pointer; color: var(--primary); font-weight: 600; font-size: 14px;
+  list-style: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▸"; transition: transform .15s; display: inline-block; }
+details[open] > summary::before { transform: rotate(90deg); }
+.empty { color: var(--muted); padding: 10px 0; display: flex; align-items: center; gap: 8px; }
+.callout { display: flex; gap: 10px; align-items: flex-start; border-radius: 10px; padding: 12px 14px;
+  border: 1px solid; margin: 12px 0 0; font-size: 14px; }
+.callout.warn { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn); }
+.callout.ok { background: var(--ok-bg); border-color: var(--ok-bd); color: var(--ok); }
+.tags code { display: inline-block; margin: 0 4px 4px 0; }
+
+@media (max-width: 640px) {
+  .hero h1 { font-size: 24px; } .kv { grid-template-columns: 1fr; } .kv dt { margin-top: 8px; }
+  main { padding: 8px 16px 40px; }
+}
+@media print {
+  body { background: #fff; } .nav { display: none; } .hero { padding: 20px; }
+  .tool, .panel, .kpi { box-shadow: none; break-inside: avoid; }
+  details > *:not(summary) { display: block; }
+}
 """
 
+# Inline SVG icons (Lucide-style, stroke = currentColor) — no icon fonts/CDN.
+_ICON_PATHS = {
+    "shield": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    "alert": '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'
+             '<path d="M12 9v4"/><path d="M12 17h.01"/>',
+    "x": '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+    "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    "check": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    "tool": '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9'
+            ' 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+    "file": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
+            '<path d="M14 2v6h6"/>',
+    "cpu": '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>'
+           '<path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/>',
+    "layers": '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+    "scale": '<path d="m16 16 3-8 3 8c-.9.7-1.9 1-3 1s-2.1-.3-3-1z"/><path d="m2 16 3-8 3 8c-.9.7-1.9'
+             ' 1-3 1s-2.1-.3-3-1z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h18"/>',
+    "hash": '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+    "eye": '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+}
 
-def _badge(level: str) -> str:
-    cls = {"error": "err", "warning": "warn", "note": "note", "none": "ok"}.get(level, "note")
-    return f'<span class="badge {cls}">{html.escape(level)}</span>'
+
+def _icon(name: str) -> str:
+    return ('<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            f'{_ICON_PATHS[name]}</svg>')
+
+
+_LEVEL = {  # level → (css class, icon, label)
+    "error": ("err", "x", "error"),
+    "warning": ("warn", "alert", "warning"),
+    "note": ("note", "info", "info"),
+    "none": ("ok", "check", "pass"),
+}
+_ORDER = {"error": 0, "warning": 1, "note": 2, "none": 3}
+
+
+def _badge(level: str, count: int | None = None) -> str:
+    cls, icon, label = _LEVEL.get(level, _LEVEL["note"])
+    text = f"{count} {label}" if count is not None else label
+    zero = " zero" if count == 0 else ""
+    return f'<span class="badge {cls}{zero}">{_icon(icon)}{html.escape(text)}</span>'
 
 
 def _esc(x: Any) -> str:
@@ -79,40 +233,90 @@ def _esc(x: Any) -> str:
     return html.escape(str(x))
 
 
-def _render_results_table(results: list[dict]) -> str:
-    if not results:
-        return '<div class="empty">No findings recorded.</div>'
-    rows = []
+def _uri(r: dict) -> str:
+    locs = r.get("locations") or []
+    return locs[0].get("physicalLocation", {}).get("artifactLocation", {}).get("uri", "") \
+        if locs else ""
+
+
+def _found_in(r: dict) -> str:
+    """'path : line N' — where in the model the finding was detected."""
+    uri = _uri(r)
+    if not uri:
+        return ""
+    locs = r.get("locations") or []
+    line = locs[0].get("physicalLocation", {}).get("region", {}).get("startLine")
+    path = uri if not uri.startswith("/") else Path(uri).name
+    return f"<code>{_esc(path)}</code>" + (f" <span class=ln>line {line}</span>" if line else "")
+
+
+GROUP_MIN = 4  # this many same-rule/same-level findings collapse into one row
+
+
+def _rows(results: list[dict]) -> str:
+    groups: dict[tuple[str, str], list[dict]] = {}
     for r in results:
-        lvl = r.get("level", "note")
-        rule = _esc(r.get("ruleId", ""))
-        msg = _esc(r.get("message", {}).get("text", ""))
-        loc = ""
-        locs = r.get("locations") or []
-        if locs:
-            uri = locs[0].get("physicalLocation", {}).get("artifactLocation", {}).get("uri", "")
-            loc = f"<code>{_esc(uri)}</code>"
-        props = r.get("properties") or {}
-        prop_html = ""
-        if props:
-            inner = "; ".join(
-                f"{_esc(k)}={_esc(v)}"
-                for k, v in props.items()
+        groups.setdefault((r.get("level", "note"), r.get("ruleId", "")), []).append(r)
+    rows = []
+    for (level, rule), items in groups.items():
+        batch = [items] if len(items) >= GROUP_MIN else [[r] for r in items]
+        for grp in batch:
+            r = grp[0]
+            msg = _esc(r.get("message", {}).get("text", ""))
+            props = "; ".join(
+                f"{_esc(k)}={_esc(v)}" for k, v in (r.get("properties") or {}).items()
                 if not isinstance(v, (list, dict)) and v is not None
             )
-            if inner:
-                prop_html = (
-                    f'<div style="color:var(--muted);font-size:12px;margin-top:4px;">{inner}</div>'
-                )
-        rows.append(
-            f"<tr><td>{_badge(lvl)}</td><td><code>{rule}</code></td>"
-            f"<td>{msg}{prop_html}</td><td>{loc}</td></tr>"
-        )
+            loc = _found_in(r)
+            if len(grp) > 1:
+                files = "".join(f"<li>{_found_in(x)}</li>" for x in grp if _uri(x))
+                msg = (f"<strong>{len(grp)} similar findings.</strong> e.g. {msg}"
+                       f"<details><summary>Show {len(grp)} locations</summary>"
+                       f"<ul class=locs>{files}</ul></details>")
+                loc = f"{len(grp)} files"
+            rows.append(
+                f"<tr><td>{_badge(level)}</td><td class=rule><code>{_esc(rule)}</code></td>"
+                f"<td>{msg}{f'<div class=props>{props}</div>' if props and len(grp) == 1 else ''}"
+                f"</td><td class=loc>{loc}</td></tr>"
+            )
     return (
-        '<div class="scrollx"><table>'
-        '<thead><tr><th>Level</th><th>Rule</th><th>Finding</th><th>Location</th></tr></thead>'
-        '<tbody>' + "".join(rows) + '</tbody></table></div>'
+        '<div class="scrollx"><table><thead><tr><th>Level</th><th>Rule</th><th>Finding</th>'
+        '<th>Found in</th></tr></thead><tbody>' + "".join(rows) + "</tbody></table></div>"
     )
+
+
+# Tools whose warnings are mostly coverage/noise: fold warnings too, keep only errors open.
+COLLAPSE_WARNINGS = {"modelaudit"}
+
+
+def _render_results(results: list[dict], *, collapse_warnings: bool = False) -> str:
+    """Errors always shown; informational (and optionally warning) results folded away."""
+    if not results:
+        return f'<div class="empty">{_icon("check")} No findings recorded.</div>'
+    by_level: dict[str, list[dict]] = {"error": [], "warning": [], "note": []}
+    for r in results:
+        by_level.get(r.get("level", "note"), by_level["note"]).append(r)
+    errors, warns, notes = by_level["error"], by_level["warning"], by_level["note"]
+
+    shown = errors + ([] if collapse_warnings else warns)
+    folded = [("warning", warns)] if collapse_warnings else []
+    folded.append(("informational", notes))
+    out = _rows(shown) if shown else ""
+    for label, items in folded:
+        if not items:
+            continue
+        if not out and len(folded) == 1:  # nothing above it: no point hiding the only table
+            out = _rows(items)
+            continue
+        out += (f"<details><summary>Show {len(items)} {label}"
+                f"{'s' if label == 'warning' and len(items) != 1 else ''}</summary>"
+                f"{_rows(items)}</details>")
+    return out
+
+
+def _fact(icon: str, key: str, value: str, detail: str = "", wide: bool = False) -> str:
+    return (f'<div class="fact{" wide" if wide else ""}"><div class="k">{_icon(icon)}{key}</div>'
+            f'<div class="v">{value}</div>{f"<div class=d>{detail}</div>" if detail else ""}</div>')
 
 
 def build_html(scan_dir: Path, sarif: dict) -> str:
@@ -120,8 +324,8 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
     sha_inv = load_json(scan_dir / "raw" / "02_sha256.json") or {"files": []}
     fmt = load_json(scan_dir / "raw" / "03_format_inventory.json") or {}
     licenses = load_json(scan_dir / "raw" / "07_licenses.json") or {}
+    licenses = licenses if isinstance(licenses, dict) else {}
 
-    # Aggregate counts
     level_counts: Counter = Counter()
     tool_counts: dict[str, Counter] = {}
     for run in sarif.get("runs", []):
@@ -131,187 +335,219 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
             lvl = res.get("level", "note")
             level_counts[lvl] += 1
             tool_counts[name][lvl] += 1
+    errors, warnings = level_counts.get("error", 0), level_counts.get("warning", 0)
+    notes = level_counts.get("note", 0)
 
-    # Header info
-    model_id = meta.get("id") or "UNKNOWN"
-    sha = meta.get("sha") or "unknown"
-    license_label = meta.get("license") or "not declared"
+    ms = model_summary(meta, licenses or None)
+    model_id = ms["name"] or "UNKNOWN"
+    sha = ms["version"]["commit_sha"] or "unknown"
     generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    arch, moe, ctxw, lic = (ms["architecture"], ms["architecture"]["moe"], ms["context_window"],
+                            ms["license"])
+    inputs = ", ".join(ms["modality"]["inputs"]) or "—"
+    outputs = ", ".join(ms["modality"]["outputs"] or []) or "—"
+    ctx_txt = f"{ctxw['tokens']:,}" if ctxw["tokens"] else "—"
 
-    # Sections
-    parts: list[str] = []
-    parts.append(f"""<!DOCTYPE html>
+    if errors:
+        verdict = ("fail", "x", "FAIL", f"{errors} error-level finding(s)")
+    elif warnings:
+        verdict = ("review", "alert", "REVIEW", f"{warnings} warning(s) need a look")
+    else:
+        verdict = ("pass", "check", "PASS", "no errors or warnings")
+
+    parts: list[str] = [f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<title>OS LLM Scan Report — {_esc(model_id)}</title>
-<style>{CSS}</style></head><body><div class="wrap">
-<header>
-  <h1>Open-Source LLM Scan Report</h1>
-  <div class="sub">Model: <strong>{_esc(model_id)}</strong> &middot; Commit SHA: <code>{_esc(sha[:12])}…</code> &middot; Generated {_esc(generated)}</div>
-</header>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Model Scan Report — {_esc(model_id)}</title>
+<style>{CSS}</style></head><body>
+<div class="hero"><div class="inner">
+  <div class="top">
+    <div>
+      <div class="eyebrow">{_icon("shield")} Open-Source LLM Security Scan</div>
+      <h1>{_esc(model_id)}</h1>
+      <div class="meta">
+        <span>Provider <strong>{_esc(ms["provider"] or "—")}</strong></span>
+        <span>Commit <code>{_esc(sha[:12])}</code></span>
+        <span>Revision <code>{_esc(ms["version"]["revision"] or "—")}</code></span>
+        <span>Scanned {_esc(generated)}</span>
+      </div>
+    </div>
+    <div class="verdict {verdict[0]}" role="status">{_icon(verdict[1])}
+      <div>{verdict[2]}<small>{_esc(verdict[3])}</small></div></div>
+  </div>
+  <div class="chips">
+    <span class="chip"><b>Params</b>{_esc(ms["parameters"]["human"] or "—")}</span>
+    <span class="chip"><b>Context</b>{ctx_txt} tokens</span>
+    <span class="chip"><b>Modality</b>{_esc(inputs)} → {_esc(outputs)}</span>
+    <span class="chip"><b>License</b>{_esc(lic["declared"] or "not declared")}</span>
+  </div>
+</div></div>
+<nav class="nav" aria-label="Report sections"><div class="inner">
+  <a href="#summary">Summary</a><a href="#model">Model</a><a href="#integrity">Integrity</a>
+  <a href="#findings">Findings</a><a href="#licenses">Licenses</a>
+</div></nav>
+<main>
+"""]
 
-<div class="toc"><strong>Contents</strong>
-  <ol>
-    <li><a href="#summary">Executive summary</a></li>
-    <li><a href="#model">Model identity &amp; provenance</a></li>
-    <li><a href="#integrity">Integrity &amp; format inventory</a></li>
-    <li><a href="#findings">Findings by tool</a></li>
-    <li><a href="#licenses">License inventory</a></li>
-    <li><a href="#attestation">Attestation</a></li>
-  </ol>
-</div>
-""")
-
-    # 1. Summary
+    # 1. Executive summary
+    total = errors + warnings + notes
+    pct = (lambda n: f"{100 * n / total:.2f}%") if total else (lambda n: "0%")
+    tool_rows = "".join(
+        f"<tr><td><strong>{_esc(name)}</strong></td>"
+        f"<td class=num>{_badge('error', c.get('error', 0))}</td>"
+        f"<td class=num>{_badge('warning', c.get('warning', 0))}</td>"
+        f"<td class=num>{_badge('note', c.get('note', 0))}</td></tr>"
+        for name, c in tool_counts.items()
+    )
+    unsafe = fmt.get("counts", {}).get("unsafe_format", 0)
     parts.append(f"""
-<h2 id="summary">1. Executive Summary</h2>
-<div class="grid">
-  <div class="card"><div class="n" style="color:var(--err-fg)">{level_counts.get('error',0)}</div><div class="l">Error-level findings</div></div>
-  <div class="card"><div class="n" style="color:var(--warn-fg)">{level_counts.get('warning',0)}</div><div class="l">Warning-level findings</div></div>
-  <div class="card"><div class="n" style="color:var(--note-fg)">{level_counts.get('note',0)}</div><div class="l">Informational</div></div>
-  <div class="card"><div class="n">{len(sarif.get('runs', []))}</div><div class="l">Scan tools run</div></div>
-  <div class="card"><div class="n">{len(sha_inv.get('files', []))}</div><div class="l">Weight files hashed</div></div>
-  <div class="card"><div class="n">{fmt.get('counts',{}).get('unsafe_format', 0)}</div><div class="l">Unsafe-format weight files</div></div>
+<section id="summary"><h2><span class="num">1</span>Executive Summary</h2>
+<div class="kpis">
+  <div class="kpi err"><div class="n">{errors}</div><div class="l">{_icon("x")}Errors</div></div>
+  <div class="kpi warn"><div class="n">{warnings}</div><div class="l">{_icon("alert")}Warnings</div></div>
+  <div class="kpi note"><div class="n">{notes}</div><div class="l">{_icon("info")}Informational</div></div>
+  <div class="kpi neutral"><div class="n">{len(sarif.get("runs", []))}</div><div class="l">{_icon("tool")}Scan tools run</div></div>
+  <div class="kpi neutral"><div class="n">{len(sha_inv.get("files", []))}</div><div class="l">{_icon("hash")}Weight files hashed</div></div>
+  <div class="kpi {"err" if unsafe else "ok"}"><div class="n">{unsafe}</div><div class="l">{_icon("file")}Unsafe-format files</div></div>
 </div>
-<p>This report combines outputs from automated security tooling into a single human-readable
-summary alongside a machine-readable SARIF 2.1.0 file (<code>scan_results.sarif</code>) suitable
-for ingestion by GitHub Advanced Security, Azure DevOps, SonarQube, DefectDojo, or similar
-platforms. <strong>Findings here do not constitute approval.</strong> They are evidence for
-review by InfoSec and the Model Review &amp; Management Committee.</p>
+<div class="panel" style="margin-top:16px">
+  <h3>Finding distribution</h3>
+  <div class="dist" role="img" aria-label="{errors} errors, {warnings} warnings, {notes} informational">
+    <span class="e" style="width:{pct(errors)}"></span><span class="w" style="width:{pct(warnings)}"></span><span class="i" style="width:{pct(notes)}"></span>
+  </div>
+  <div class="legend"><span><i style="background:var(--err)"></i>{errors} errors</span>
+    <span><i style="background:var(--warn)"></i>{warnings} warnings</span>
+    <span><i style="background:var(--note);opacity:.55"></i>{notes} informational</span></div>
+  {f'''<div class="scrollx" style="margin-top:16px"><table><thead><tr><th>Tool</th>
+  <th class=num>Errors</th><th class=num>Warnings</th><th class=num>Info</th></tr></thead>
+  <tbody>{tool_rows}</tbody></table></div>''' if tool_rows else ""}
+</div></section>
 """)
 
     # 2. Model identity
-    sib_count = len(meta.get("siblings", []))
+    moe_txt = f"MoE · {moe['experts']} experts, {moe['active_per_token']} active/token" if moe else ""
+    dtypes = ", ".join(f"{k} {v:,}" for k, v in (ms["parameters"]["by_dtype"] or {}).items())
+    total_params = ms["parameters"]["total"]
     parts.append(f"""
-<h2 id="model">2. Model Identity &amp; Provenance</h2>
+<section id="model"><h2><span class="num">2</span>Model Identity &amp; Provenance</h2>
+<div class="facts">
+  {_fact("cpu", "Architecture", f"<code>{_esc(arch['class'] or '—')}</code>",
+         f"{_esc(arch['model_type'] or '')}{' · ' + _esc(moe_txt) if moe_txt else ''}")}
+  {_fact("layers", "Parameters", _esc(ms["parameters"]["human"] or "—"),
+         _esc(f"{total_params:,} · {dtypes}" if total_params else dtypes))}
+  {_fact("file", "Context window", f"{ctx_txt} tokens" if ctxw["tokens"] else "—",
+         f"sliding window {ctxw['sliding_window']:,}" if ctxw["sliding_window"] else "")}
+  {_fact("eye", "Modality", f"{_esc(inputs)} → {_esc(outputs)}",
+         f"<code>{_esc(ms['modality']['pipeline_tag'] or '—')}</code>")}
+  {_fact("scale", "License", _esc(lic["declared"] or "not declared"),
+         f"shipped: {_esc(', '.join(lic['files']) or 'none')}")}
+  {_fact("shield", "Provider", _esc(ms["provider"] or "—"),
+         f"base model: {_esc(ms['base_model'])}" if ms["base_model"] else "")}
+  {_fact("hash", "Version", f"<code>{_esc(sha)}</code>",
+         f"revision {_esc(ms['version']['revision'] or '—')} · updated "
+         f"{_esc(ms['version']['last_modified'] or '—')}", wide=True)}
+</div>
+<div class="panel" style="margin-top:16px"><h3>Source</h3>
 <dl class="kv">
   <dt>Repository</dt><dd><code>{_esc(model_id)}</code></dd>
-  <dt>Resolved commit SHA</dt><dd><code>{_esc(sha)}</code></dd>
-  <dt>Revision requested</dt><dd><code>{_esc(meta.get('revision_requested', 'main'))}</code></dd>
-  <dt>License (declared)</dt><dd>{_esc(license_label)}</dd>
-  <dt>License link</dt><dd>{_esc(meta.get('license_link') or '—')}</dd>
-  <dt>Pipeline tag</dt><dd>{_esc(meta.get('pipeline_tag') or '—')}</dd>
-  <dt>Library</dt><dd>{_esc(meta.get('library_name') or '—')}</dd>
-  <dt>Last modified</dt><dd>{_esc(meta.get('last_modified') or '—')}</dd>
-  <dt>Downloads</dt><dd>{_esc(meta.get('downloads') or '—')}</dd>
-  <dt>File count</dt><dd>{sib_count}</dd>
+  <dt>License link</dt><dd>{_esc(lic["link"] or "—")}</dd>
+  <dt>Library</dt><dd>{_esc(meta.get("library_name") or "—")}</dd>
+  <dt>Downloads</dt><dd>{_esc(f"{meta['downloads']:,}" if meta.get("downloads") else "—")}</dd>
+  <dt>Repo file count</dt><dd>{len(meta.get("siblings", []))}</dd>
+  <dt>Gated</dt><dd>{_esc(meta.get("gated") if meta.get("gated") is not None else "—")}</dd>
 </dl>
-<details><summary>Show tags ({len(meta.get('tags', []))})</summary>
-<p>{', '.join(f'<code>{_esc(t)}</code>' for t in meta.get('tags', [])[:60])}</p>
-</details>
+<details><summary>Show tags ({len(meta.get("tags", []))})</summary>
+<p class="tags">{"".join(f"<code>{_esc(t)}</code>" for t in meta.get("tags", [])[:80])}</p>
+</details></div></section>
 """)
 
     # 3. Integrity
     fmt_counts = fmt.get("counts", {})
-    unsafe_count = fmt_counts.get("unsafe_format", 0)
-    unsafe_warn = ""
-    if unsafe_count > 0:
-        unsafe_warn = (
-            '<p><strong>Unsafe-format weight files detected.</strong> '
-            'These formats permit arbitrary code execution at load time. '
-            'Verify the modelaudit and second-opinion scan results in Section 4 before approving.</p>'
-        )
-
+    sha_files = sha_inv.get("files", [])
     sha_rows = "".join(
-        f"<tr><td><code>{_esc(f['path'])}</code></td><td>{f['size']:,}</td>"
+        f"<tr><td><code>{_esc(f['path'])}</code></td><td class=num>{f['size']:,}</td>"
         f"<td><code style='font-size:11px'>{_esc(f['sha256'])}</code></td></tr>"
-        for f in sha_inv.get("files", [])[:50]
+        for f in sha_files[:50]
     )
-    sha_more = ""
-    if len(sha_inv.get("files", [])) > 50:
-        sha_more = (
-            f"<p class='empty'>… and {len(sha_inv['files']) - 50} more "
-            "(see <code>02_sha256.json</code>).</p>"
-        )
-
+    more = (f"<p class='empty'>… and {len(sha_files) - 50} more (see <code>02_sha256.json</code>)."
+            "</p>") if len(sha_files) > 50 else ""
+    callout = (
+        f'<div class="callout warn">{_icon("alert")}<div><strong>Unsafe-format weight files '
+        "detected.</strong> These formats permit arbitrary code execution at load time — check "
+        "the modelaudit and picklescan results in Findings before approving.</div></div>"
+        if unsafe else
+        f'<div class="callout ok">{_icon("check")}<div>All weight files use non-executable formats.'
+        "</div></div>"
+    )
     parts.append(f"""
-<h2 id="integrity">3. Integrity &amp; Format Inventory</h2>
-<div class="grid">
-  <div class="card"><div class="n" style="color:var(--ok-fg)">{fmt_counts.get('safetensors',0)}</div><div class="l">safetensors (preferred)</div></div>
-  <div class="card"><div class="n" style="color:var(--warn-fg)">{unsafe_count}</div><div class="l">Unsafe-format weight files</div></div>
-  <div class="card"><div class="n">{fmt_counts.get('other',0)}</div><div class="l">Other formats</div></div>
+<section id="integrity"><h2><span class="num">3</span>Integrity &amp; Format Inventory</h2>
+<div class="kpis">
+  <div class="kpi ok"><div class="n">{fmt_counts.get("safetensors", 0)}</div><div class="l">{_icon("check")}safetensors (preferred)</div></div>
+  <div class="kpi {"err" if unsafe else "ok"}"><div class="n">{unsafe}</div><div class="l">{_icon("alert")}Unsafe-format files</div></div>
+  <div class="kpi neutral"><div class="n">{fmt_counts.get("other", 0)}</div><div class="l">{_icon("file")}Other formats</div></div>
 </div>
-{unsafe_warn}
-<details><summary>SHA-256 inventory (first 50 files)</summary>
-<div class="scrollx"><table>
-<thead><tr><th>Path</th><th>Size (bytes)</th><th>SHA-256</th></tr></thead>
-<tbody>{sha_rows or '<tr><td colspan=3 class=empty>No files hashed.</td></tr>'}</tbody></table></div>
-{sha_more}
-</details>
+{callout}
+<div class="panel" style="margin-top:16px"><details><summary>SHA-256 inventory ({len(sha_files)} files)</summary>
+<div class="scrollx" style="margin-top:10px"><table>
+<thead><tr><th>Path</th><th class=num>Size (bytes)</th><th>SHA-256</th></tr></thead>
+<tbody>{sha_rows or "<tr><td colspan=3 class=empty>No files hashed.</td></tr>"}</tbody></table></div>
+{more}</details></div></section>
 """)
 
     # 4. Findings by tool
     parts.append(
-        '<h2 id="findings">4. Findings by Tool</h2>'
-        '<p class="empty">Per-tool findings below (os-llm-review, modelaudit, second-opinion scan, '
-        'pip-audit, grype, gitleaks).</p>'
+        '<section id="findings"><h2><span class="num">4</span>Findings by Tool</h2>'
+        '<p class="sub">os-llm-review, modelaudit, picklescan, pip-audit, os-llm-model-provenance, '
+        "grype, gitleaks — errors and warnings first; informational results are collapsed.</p>"
     )
     for run in sarif.get("runs", []):
         driver = run.get("tool", {}).get("driver", {})
         name = driver.get("name", "unknown")
         version = driver.get("version", "")
         info_uri = driver.get("informationUri", "")
-        counts = tool_counts.get(name, Counter())
-        summary_line = (
-            f"{counts.get('error',0)} error &middot; "
-            f"{counts.get('warning',0)} warning &middot; "
-            f"{counts.get('note',0)} note"
-        )
-        link_html = (
-            f' &middot; <a href="{_esc(info_uri)}" target="_blank" rel="noopener">docs</a>'
-            if info_uri else ""
-        )
+        c = tool_counts.get(name, Counter())
+        docs = (f' <a href="{_esc(info_uri)}" target="_blank" rel="noopener">docs</a>'
+                if info_uri.startswith("http") and "internal" not in info_uri else "")
         parts.append(f"""
-<div class="tool">
-  <h3>{_esc(name)} <span class="meta">v{_esc(version)} &middot; {summary_line}{link_html}</span></h3>
-  {_render_results_table(run.get('results', []))}
-</div>
+<article class="tool">
+  <header><h3>{_icon("tool")}{_esc(name)}<span class="ver">{f"v{_esc(version)}" if version and version != "unknown" else ""}{docs}</span></h3>
+    <div class="counts">{_badge("error", c.get("error", 0))}{_badge("warning", c.get("warning", 0))}{_badge("note", c.get("note", 0))}</div>
+  </header>
+  <div class="body">{_render_results(run.get("results", []), collapse_warnings=name in COLLAPSE_WARNINGS)}</div>
+</article>
 """)
+    parts.append("</section>")
 
-    # 5. License inventory (what the model ships + what its card declares)
-    parts.append('<h2 id="licenses">5. Model License Inventory</h2>')
-    declared = (licenses.get("declared") or {}) if isinstance(licenses, dict) else {}
-    lic_files = (licenses.get("files") or []) if isinstance(licenses, dict) else []
-    parts.append(f"""
-<dl class="kv">
-  <dt>Declared (model card)</dt><dd>{_esc(declared.get("license") or "not declared")}</dd>
-  <dt>License name</dt><dd>{_esc(declared.get("license_name") or "—")}</dd>
-  <dt>License link</dt><dd>{_esc(declared.get("license_link") or "—")}</dd>
-</dl>
-""")
+    # 5. License inventory
+    declared = licenses.get("declared") or {}
+    lic_files = licenses.get("files") or []
     if lic_files:
         lic_rows = "".join(
             f"<tr><td><code>{_esc(f.get('path'))}</code></td><td>{_esc(f.get('first_line'))}</td>"
             f"<td><code>{_esc((f.get('sha256') or '')[:12])}…</code></td></tr>"
             for f in lic_files
         )
-        parts.append(f"""
-<div class="scrollx"><table>
-<thead><tr><th>File</th><th>First line</th><th>SHA-256</th></tr></thead>
-<tbody>{lic_rows}</tbody></table></div>
-<p>Attach these files to the Legal review request; do not rely on the summary line.</p>
-""")
+        lic_body = (
+            '<div class="scrollx" style="margin-top:14px"><table><thead><tr><th>File</th>'
+            f"<th>First line</th><th>SHA-256</th></tr></thead><tbody>{lic_rows}</tbody></table></div>"
+            '<p class="sub" style="margin:10px 0 0">Attach these files to the Legal review request; '
+            "do not rely on the summary line.</p>"
+        )
     else:
-        parts.append('<div class="empty">Model ships no LICENSE / NOTICE / COPYING file — '
-                     'only the model-card declaration above is available.</div>')
-
-    # 6. Attestation
+        lic_body = (f'<div class="callout warn">{_icon("alert")}<div>Model ships no LICENSE / '
+                    "NOTICE / COPYING file — only the model-card declaration above is available."
+                    "</div></div>")
     parts.append(f"""
-<h2 id="attestation">6. Attestation</h2>
-<p>I confirm that the scans documented in this report were executed against the model at the
-pinned commit SHA shown in Section 2, and that the SARIF file <code>scan_results.sarif</code>
-contains the complete machine-readable record of findings.</p>
+<section id="licenses"><h2><span class="num">5</span>Model License Inventory</h2>
+<div class="panel">
 <dl class="kv">
-  <dt>Engineer (name)</dt><dd>__________________________</dd>
-  <dt>Team / Cost-centre</dt><dd>__________________________</dd>
-  <dt>Date</dt><dd>__________________________</dd>
-  <dt>Signature</dt><dd>__________________________</dd>
+  <dt>Declared (model card)</dt><dd><strong>{_esc(declared.get("license") or "not declared")}</strong></dd>
+  <dt>License name</dt><dd>{_esc(declared.get("license_name") or "—")}</dd>
+  <dt>License link</dt><dd>{_esc(declared.get("license_link") or "—")}</dd>
 </dl>
-
-<footer>
-  Generated by os-llm-review tooling. Raw outputs preserved in
-  <code>{_esc(str(scan_dir / 'raw'))}</code>. SARIF log:
-  <code>{_esc(str(scan_dir / 'reports' / 'scan_results.sarif'))}</code>.
-</footer>
-</div></body></html>""")
+{lic_body}
+</div></section>
+</main></body></html>""")
 
     return "".join(parts)

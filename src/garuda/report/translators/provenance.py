@@ -42,7 +42,7 @@ def build_provenance_run(scan_dir: Path) -> dict | None:
                + _publisher(data.get("publisher") or {}))
     return {
         "tool": {"driver": {
-            "name": "garuda-provenance",
+            "name": "os-llm-model-provenance",
             "rules": [
                 {"id": rid, "name": name, "shortDescription": {"text": text},
                  "defaultConfiguration": {"level": level}}
