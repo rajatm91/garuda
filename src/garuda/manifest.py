@@ -1,8 +1,8 @@
 """manifest.json — explicit pipeline-state record (spec §5.4)."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,14 +25,14 @@ class Manifest:
 
     @classmethod
     def create(cls, *, scan_dir: Path, repo: str, revision: str | None,
-               source_mode: str, source_abs_path: str | None) -> "Manifest":
+               source_mode: str, source_abs_path: str | None) -> Manifest:
         return cls(
             version=MANIFEST_VERSION,
             repo=repo,
             revision_requested=revision,
             resolved_sha=None,
             source={"mode": source_mode, "abs_path": source_abs_path, "weights_sha256": None},
-            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            timestamp=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             stages={
                 "static":  {"ran": False, "duration_s": 0.0, "skipped_steps": []},
             },

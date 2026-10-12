@@ -1,5 +1,6 @@
 """Step 01 — capture HF model_info OR read on-disk config.json (offline mode)."""
 from __future__ import annotations
+
 import logging
 import os
 import re
@@ -8,12 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from huggingface_hub import HfApi
+
 from ...context import ScanContext, StageResult
 from ...util.io import write_json, write_stub
 
 log = logging.getLogger(__name__)
 OUT = "01_metadata.json"
-_FRONTMATTER = re.compile(r"^---\n(.*?)\n---", re.S)
+_FRONTMATTER = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
 
 
 def run(ctx: ScanContext) -> StageResult:

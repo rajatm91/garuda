@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+
 from garuda.context import ScanContext
 from garuda.stages.static import format_inventory as step
 

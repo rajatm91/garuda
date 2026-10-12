@@ -14,7 +14,7 @@ def test_scan_static_against_tiny_model(tmp_path: Path):
     res = subprocess.run(
         [sys.executable, "-m", "garuda.cli", "static",
          "--local-path", str(FIXTURE), "--out", str(out)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     assert res.returncode == 0, res.stderr
     assert (out / "manifest.json").exists()
@@ -33,7 +33,7 @@ def test_scan_report_after_static(tmp_path: Path):
     )
     res = subprocess.run(
         [sys.executable, "-m", "garuda.cli", "report", str(out)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     assert res.returncode == 0, res.stderr
     assert (out / "reports" / "scan_results.sarif").exists()

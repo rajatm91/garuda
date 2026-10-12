@@ -1,10 +1,11 @@
 import subprocess
 import sys
 
+
 def test_scan_help_works():
     result = subprocess.run(
         [sys.executable, "-m", "garuda.cli", "--help"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0
     for sub in ("static", "all", "report"):

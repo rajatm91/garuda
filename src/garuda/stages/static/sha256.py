@@ -1,5 +1,6 @@
 """Step 02 — SHA-256 every weight-format file."""
 from __future__ import annotations
+
 import hashlib
 import logging
 import os

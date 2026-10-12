@@ -1,5 +1,6 @@
 """Step 08 — syft SBOM (CycloneDX + SPDX)."""
 from __future__ import annotations
+
 import logging
 import shutil
 import time

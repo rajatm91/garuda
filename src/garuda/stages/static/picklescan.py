@@ -1,5 +1,6 @@
 """Step 05 — second-opinion scan of unsafe-format weight files."""
 from __future__ import annotations
+
 import logging
 import subprocess
 import time
@@ -25,7 +26,7 @@ def run(ctx: ScanContext) -> StageResult:
     results = []
     for f in unsafe:
         full = ctx.weights_dir / f["path"]
-        r = subprocess.run([BIN, "-p", str(full)], capture_output=True, text=True)
+        r = subprocess.run([BIN, "-p", str(full)], capture_output=True, text=True, check=False)
         results.append({
             "path": f["path"],
             "exit_code": r.returncode,

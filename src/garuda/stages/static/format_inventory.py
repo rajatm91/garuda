@@ -1,5 +1,6 @@
 """Step 03 — partition step-02 hashes by extension."""
 from __future__ import annotations
+
 import logging
 import time
 

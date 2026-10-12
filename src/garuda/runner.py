@@ -1,5 +1,6 @@
 """Stage orchestration."""
 from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
@@ -8,18 +9,18 @@ from huggingface_hub import snapshot_download
 
 from .context import ScanContext
 from .manifest import load_manifest
-from .report.sarif import build_sarif, write_sarif
 from .report.html import build_html
+from .report.sarif import build_sarif, write_sarif
 from .stages.static import (  # noqa: F401  — populated into module namespace for mock-friendly _static_steps()
-    metadata,
-    sha256,
     format_inventory,
+    gitleaks,
+    grype,
+    metadata,
     modelaudit,
     pip_audit,
     pip_licenses,
+    sha256,
     syft,
-    grype,
-    gitleaks,
 )
 from .stages.static import picklescan as picklescan_mod  # noqa: F401
 from .util.io import load_json

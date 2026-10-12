@@ -1,5 +1,6 @@
 """Step 10 — gitleaks secrets scan (JSON + native SARIF)."""
 from __future__ import annotations
+
 import logging
 import shutil
 import time

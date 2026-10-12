@@ -4,11 +4,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..util.io import write_json
-from .translators.review import build_review_run
+from .translators.embed import embed_runs
 from .translators.modelaudit import build_modelaudit_run
 from .translators.picklescan import build_picklescan_run
 from .translators.pip_audit import build_pip_audit_run
-from .translators.embed import embed_runs
+from .translators.review import build_review_run
 
 SARIF_VERSION = "2.1.0"
 SARIF_SCHEMA = (

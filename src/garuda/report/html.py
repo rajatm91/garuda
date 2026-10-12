@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import html
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from ..util.io import load_json
-
 
 # ---------------------------------------------------------------------------
 # CSS — embedded, no external deps
@@ -137,7 +136,7 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
     model_id = meta.get("id") or "UNKNOWN"
     sha = meta.get("sha") or "unknown"
     license_label = meta.get("license") or "not declared"
-    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     # Sections
     parts: list[str] = []

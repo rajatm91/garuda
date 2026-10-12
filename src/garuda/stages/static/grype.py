@@ -1,5 +1,6 @@
 """Step 09 — grype CVE scan (JSON + native SARIF)."""
 from __future__ import annotations
+
 import logging
 import shutil
 import time

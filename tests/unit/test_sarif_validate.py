@@ -1,3 +1,4 @@
+import jsonschema
 import pytest
 
 from garuda.report._validate import validate_sarif
@@ -13,5 +14,5 @@ def test_minimal_valid_log_passes():
 
 
 def test_missing_version_raises():
-    with pytest.raises(Exception):
+    with pytest.raises(jsonschema.ValidationError):
         validate_sarif({"runs": []})

@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .context import ScanContext
@@ -42,7 +42,7 @@ def _run_static(args: argparse.Namespace) -> Path | None:
     if not repo:
         print(f"{args.cmd}: must pass repo OR --local-path", file=sys.stderr)
         return None
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     safe = repo.replace("/", "_")
     scan_dir = args.out or Path.cwd() / f"scan_{safe}_{ts}"
     ctx = ScanContext(

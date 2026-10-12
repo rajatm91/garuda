@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from garuda.context import ScanContext, StageResult
 from garuda.runner import run_static
@@ -84,6 +84,7 @@ def test_weights_downloaded_by_resolved_sha_after_metadata(tmp_path: Path):
 
 def test_download_without_sha_fails(tmp_path: Path):
     import pytest
+
     from garuda.runner import _download_weights
     ctx = _ctx(tmp_path); ctx.raw_dir.mkdir()
     (ctx.raw_dir / "01_metadata.json").write_text('{"skipped": "hf metadata error"}')

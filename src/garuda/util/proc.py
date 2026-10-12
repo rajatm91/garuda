@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,22 +30,19 @@ def run_tool(
     log.info("run %s: %s", name, " ".join(argv))
     t0 = time.monotonic()
 
-    stdout_f = open(stdout_path, "wb") if stdout_path else subprocess.DEVNULL
-    stderr_f = open(stderr_path, "wb") if stderr_path else subprocess.DEVNULL
-    try:
-        proc = subprocess.Popen(argv, stdout=stdout_f, stderr=stderr_f, cwd=cwd, env=env)
+    with ExitStack() as stack:
+        stdout_f = stack.enter_context(open(stdout_path, "wb")) if stdout_path else subprocess.DEVNULL
+        stderr_f = stack.enter_context(open(stderr_path, "wb")) if stderr_path else subprocess.DEVNULL
         try:
-            exit_code = proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
-            exit_code = 124
-    except FileNotFoundError:
-        exit_code = 127
-    finally:
-        for f in (stdout_f, stderr_f):
-            if hasattr(f, "close"):
-                f.close()
+            proc = subprocess.Popen(argv, stdout=stdout_f, stderr=stderr_f, cwd=cwd, env=env)
+            try:
+                exit_code = proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+                exit_code = 124
+        except FileNotFoundError:
+            exit_code = 127
 
     dur = time.monotonic() - t0
     log.info("run %s: exit=%d duration=%.2fs", name, exit_code, dur)

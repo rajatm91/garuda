@@ -1,5 +1,6 @@
 """Step 04 — promptfoo's modelaudit. Replaces legacy modelscan."""
 from __future__ import annotations
+
 import logging
 import shutil
 import time

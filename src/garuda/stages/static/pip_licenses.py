@@ -1,5 +1,6 @@
 """Step 07 — pip-licenses JSON output."""
 from __future__ import annotations
+
 import logging
 import shutil
 import time
