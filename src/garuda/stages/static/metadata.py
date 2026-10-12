@@ -41,7 +41,7 @@ def _from_hf(repo: str, revision: str) -> dict[str, Any]:
     info = api.model_info(repo, revision=revision, files_metadata=True)
     card = info.card_data.to_dict() if info.card_data else {}
     return {
-        "id": info.id, "sha": info.sha, "revision_requested": revision,
+        "id": info.id, "author": info.author, "sha": info.sha, "revision_requested": revision,
         "tags": list(info.tags or []),
         "license": card.get("license"),
         "license_name": card.get("license_name"),
@@ -52,7 +52,8 @@ def _from_hf(repo: str, revision: str) -> dict[str, Any]:
         "library_name": info.library_name,
         "siblings": [
             {"name": s.rfilename, "size": getattr(s, "size", None),
-             "blob_id": getattr(s, "blob_id", None), "lfs": bool(getattr(s, "lfs", False))}
+             "blob_id": getattr(s, "blob_id", None), "lfs": bool(getattr(s, "lfs", False)),
+             "sha256": s.lfs.sha256 if s.lfs else None}
             for s in (info.siblings or [])
         ],
     }

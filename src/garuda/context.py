@@ -11,6 +11,9 @@ class ScanContext:
     repo: str
     revision: str | None
     local_path: Path | None  # None → HF Hub source
+    signer_identity: str | None = None  # expected Sigstore signer (step 11)
+    signer_issuer: str | None = None
+    expect_publisher: str | None = None  # expected HF org/user (step 11)
 
     @property
     def raw_dir(self) -> Path:

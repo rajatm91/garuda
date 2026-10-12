@@ -29,6 +29,10 @@ scan static --local-path /data/models/Llama-3.1-8B-Instruct
 # Static scan + report in one go
 scan all meta-llama/Llama-3.1-8B-Instruct
 
+# Pin publisher and signer (provenance step 11)
+scan all meta-llama/Llama-3.1-8B-Instruct --expect-publisher meta-llama \
+  --signer-identity release@example.com --signer-issuer https://accounts.google.com
+
 # Regenerate reports only
 scan report scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/
 ```
@@ -46,7 +50,7 @@ scan report scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/
 Every run creates `scan_<repo>_<UTC>/`:
 
 - `manifest.json` — pipeline state, tool versions, skipped steps.
-- `raw/01_metadata.json` through `raw/10_gitleaks.{json,sarif}` — native + translated outputs.
+- `raw/01_metadata.json` through `raw/11_provenance.json` — native + translated outputs.
 - `reports/scan_results.sarif` — single aggregated SARIF 2.1.0 log (submit to GHAS, DefectDojo, etc).
 - `reports/scan_report.html` — self-contained HTML for ticket attachment.
 
@@ -64,8 +68,14 @@ Every run creates `scan_<repo>_<UTC>/`:
 | 08 | `08_sbom.{cdx,spdx}.json` | syft | SBOM |
 | 09 | `09_grype.{json,sarif}` | grype | CVEs from SBOM |
 | 10 | `10_gitleaks.{json,sarif}` | gitleaks | Secrets |
+| 11 | `11_provenance.json` | huggingface_hub, model-signing | Local hashes vs HF-published LFS hashes; `model.sig` signature; publisher identity |
 
 Missing tool → `{"skipped": ...}` stub; step listed in `manifest.json` `stages.static.skipped_steps`.
+
+Step 11 provenance flags (all optional):
+
+- `--expect-publisher ORG` — error if the repo owner differs. Without it, unverified orgs / user accounts are warnings.
+- `--signer-identity ID --signer-issuer URL` — verify `model.sig` (OpenSSF model-signing / Sigstore) against this signer. Without them a present signature is reported as *unpinned* (warning) with the signer identity found in it.
 
 ## 6. NOT covered
 

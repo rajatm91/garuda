@@ -8,6 +8,7 @@ from .translators.embed import embed_runs
 from .translators.modelaudit import build_modelaudit_run
 from .translators.picklescan import build_picklescan_run
 from .translators.pip_audit import build_pip_audit_run
+from .translators.provenance import build_provenance_run
 from .translators.review import build_review_run
 
 SARIF_VERSION = "2.1.0"
@@ -18,7 +19,8 @@ SARIF_SCHEMA = (
 
 def build_sarif(scan_dir: Path, *, is_local_source: bool) -> dict:
     runs: list[dict] = [build_review_run(scan_dir, is_local_source=is_local_source)]
-    for builder in (build_modelaudit_run, build_picklescan_run, build_pip_audit_run):
+    for builder in (build_modelaudit_run, build_picklescan_run, build_pip_audit_run,
+                    build_provenance_run):
         r = builder(scan_dir)
         if r is not None:
             runs.append(r)

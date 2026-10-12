@@ -37,7 +37,7 @@ export HF_TOKEN=hf_xxx
 uv run scan static meta-llama/Llama-3.1-8B-Instruct
 ```
 
-Resolves `main` to commit SHA. Downloads weights. Runs 10 static checks. Skips checks whose binary is missing (writes stub).
+Resolves `main` to commit SHA. Downloads weights. Runs 11 static checks. Skips checks whose binary is missing (writes stub).
 
 Output dir: `scan_<safe-repo>_<UTC>/`
 
@@ -52,6 +52,11 @@ Reclaim disk:
 ```bash
 rm -rf scan_*/weights/
 ```
+
+Step 11 provenance flags (all optional):
+
+- `--expect-publisher ORG` — error if the repo owner differs. Without it, unverified orgs / user accounts are warnings.
+- `--signer-identity ID --signer-issuer URL` — verify `model.sig` (OpenSSF model-signing / Sigstore) against this signer. Without them a present signature is reported as *unpinned* (warning) with the signer identity found in it.
 
 ---
 
@@ -111,6 +116,7 @@ Pipeline state. `stages.static.skipped_steps` lists steps whose tool was absent 
 | `08_sbom.{cdx,spdx}.json` | syft SBOM |
 | `09_grype.{json,sarif}` | grype CVE |
 | `10_gitleaks.{json,sarif}` | gitleaks secrets |
+| `11_provenance.json` | hash check vs HF-published hashes, `model.sig` signature, publisher identity |
 
 Files containing `{"skipped": "..."}` = tool absent or soft-failed. Pipeline continues.
 

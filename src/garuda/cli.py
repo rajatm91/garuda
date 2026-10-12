@@ -19,6 +19,11 @@ def _add_static_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--revision", default="main")
     p.add_argument("--repo-id", help="Canonical name when using --local-path")
     p.add_argument("--out", type=Path, default=None, help="Output scan dir")
+    p.add_argument("--signer-identity",
+                   help="Expected Sigstore signer of model.sig (email or workload URI)")
+    p.add_argument("--signer-issuer",
+                   help="Expected OIDC issuer for --signer-identity")
+    p.add_argument("--expect-publisher", help="Expected HF org/user that owns the repo")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +47,9 @@ def _run_static(args: argparse.Namespace) -> Path | None:
     if not repo:
         print(f"{args.cmd}: must pass repo OR --local-path", file=sys.stderr)
         return None
+    if bool(args.signer_identity) != bool(args.signer_issuer):
+        print(f"{args.cmd}: --signer-identity and --signer-issuer go together", file=sys.stderr)
+        return None
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     safe = repo.replace("/", "_")
     scan_dir = args.out or Path.cwd() / f"scan_{safe}_{ts}"
@@ -50,6 +58,9 @@ def _run_static(args: argparse.Namespace) -> Path | None:
         repo=repo,
         revision=args.revision,
         local_path=local,
+        signer_identity=args.signer_identity,
+        signer_issuer=args.signer_issuer,
+        expect_publisher=args.expect_publisher,
     )
     m = Manifest.create(
         scan_dir=scan_dir,

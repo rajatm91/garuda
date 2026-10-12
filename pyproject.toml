@@ -9,6 +9,7 @@ description = "Static security scan toolkit for open-source LLMs"
 requires-python = ">=3.14"
 dependencies = [
   "huggingface_hub>=2.2",
+  "model-signing>=1.1.1",
   "modelaudit>=0.2.52",
   "picklescan>=1.0.5",
   "pip-audit>=2.10.1",
