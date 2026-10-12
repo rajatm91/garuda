@@ -35,8 +35,6 @@ class Manifest:
             timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             stages={
                 "static":  {"ran": False, "duration_s": 0.0, "skipped_steps": []},
-                "dynamic": {"ran": False, "duration_s": 0.0,
-                            "inference": None, "judge": None, "policy_sha256": None},
             },
             scan_dir=scan_dir,
         )
@@ -44,13 +42,6 @@ class Manifest:
     def mark_static_done(self, *, duration_s: float, skipped_steps: list[str]) -> None:
         self.stages["static"] = {
             "ran": True, "duration_s": duration_s, "skipped_steps": skipped_steps,
-        }
-
-    def mark_dynamic_done(self, *, duration_s: float, inference: dict,
-                          judge: dict, policy_sha256: str) -> None:
-        self.stages["dynamic"] = {
-            "ran": True, "duration_s": duration_s,
-            "inference": inference, "judge": judge, "policy_sha256": policy_sha256,
         }
 
     def to_dict(self) -> dict:

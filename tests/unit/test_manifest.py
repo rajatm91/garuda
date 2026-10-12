@@ -13,7 +13,7 @@ def test_manifest_create_writes_minimal_shape(tmp_path: Path):
     assert j["repo"] == "meta-llama/Foo"
     assert j["source"]["mode"] == "hf"
     assert j["stages"]["static"]["ran"] is False
-    assert j["stages"]["dynamic"]["ran"] is False
+    assert "dynamic" not in j["stages"]
 
 
 def test_manifest_local_source(tmp_path: Path):

@@ -1,4 +1,4 @@
-"""HTML report renderer — ports legacy to_html.py with hooks for dynamic stage."""
+"""HTML report renderer — ports legacy to_html.py."""
 from __future__ import annotations
 
 import html
@@ -50,11 +50,6 @@ code { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 12px;
 .badge.warn { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-bd); }
 .badge.note { background: var(--note-bg); color: var(--note-fg); border: 1px solid var(--note-bd); }
 .badge.ok   { background: var(--ok-bg);   color: var(--ok-fg);   border: 1px solid var(--ok-bd); }
-.gate { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px;
-        font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; margin-left: 8px; }
-.gate.pass { background: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-bd); }
-.gate.warn { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-bd); }
-.gate.fail { background: var(--err-bg); color: var(--err-fg); border: 1px solid var(--err-bd); }
 .tool { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
         padding: 16px; margin: 12px 0; }
 .tool h3 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
@@ -121,18 +116,11 @@ def _render_results_table(results: list[dict]) -> str:
     )
 
 
-def _gate_pill(verdict: str) -> str:
-    v = (verdict or "").upper()
-    cls = {"PASS": "pass", "WARNING": "warn", "FAIL": "fail"}.get(v, "warn")
-    return f'<span class="gate {cls}">{_esc(v or "UNKNOWN")}</span>'
-
-
-def build_html(scan_dir: Path, sarif: dict, manifest: Any) -> str:
+def build_html(scan_dir: Path, sarif: dict) -> str:
     meta = load_json(scan_dir / "raw" / "01_metadata.json") or {}
     sha_inv = load_json(scan_dir / "raw" / "02_sha256.json") or {"files": []}
     fmt = load_json(scan_dir / "raw" / "03_format_inventory.json") or {}
     licenses = load_json(scan_dir / "raw" / "07_pip_licenses.json") or []
-    eval_summary = load_json(scan_dir / "raw" / "13_eval_summary.json")
 
     # Aggregate counts
     level_counts: Counter = Counter()
@@ -168,23 +156,15 @@ def build_html(scan_dir: Path, sarif: dict, manifest: Any) -> str:
     <li><a href="#model">Model identity &amp; provenance</a></li>
     <li><a href="#integrity">Integrity &amp; format inventory</a></li>
     <li><a href="#findings">Findings by tool</a></li>
-    <li><a href="#eval">Behavioural evaluation</a></li>
     <li><a href="#licenses">License inventory</a></li>
     <li><a href="#attestation">Attestation</a></li>
   </ol>
 </div>
 """)
 
-    # 1. Summary (with optional gate pill)
-    gate_html = ""
-    if (
-        isinstance(eval_summary, dict)
-        and "skipped" not in eval_summary
-        and eval_summary.get("overall_verdict")
-    ):
-        gate_html = " " + _gate_pill(eval_summary.get("overall_verdict", ""))
+    # 1. Summary
     parts.append(f"""
-<h2 id="summary">1. Executive Summary{gate_html}</h2>
+<h2 id="summary">1. Executive Summary</h2>
 <div class="grid">
   <div class="card"><div class="n" style="color:var(--err-fg)">{level_counts.get('error',0)}</div><div class="l">Error-level findings</div></div>
   <div class="card"><div class="n" style="color:var(--warn-fg)">{level_counts.get('warning',0)}</div><div class="l">Warning-level findings</div></div>
@@ -200,21 +180,8 @@ platforms. <strong>Findings here do not constitute approval.</strong> They are e
 review by InfoSec and the Model Review &amp; Management Committee.</p>
 """)
 
-    # 2. Model identity (with optional dynamic-stage rows)
+    # 2. Model identity
     sib_count = len(meta.get("siblings", []))
-    dyn_rows = ""
-    try:
-        dyn = (manifest.stages or {}).get("dynamic", {}) if manifest is not None else {}
-    except AttributeError:
-        dyn = {}
-    if dyn and dyn.get("ran"):
-        inf = dyn.get("inference") or {}
-        jdg = dyn.get("judge") or {}
-        dyn_rows = (
-            f"  <dt>Inference mode</dt><dd>{_esc(inf.get('mode') or inf.get('driver') or '—')}</dd>\n"
-            f"  <dt>Judge model</dt><dd>{_esc(jdg.get('model') or '—')}</dd>\n"
-            f"  <dt>Policy SHA-256</dt><dd><code>{_esc(dyn.get('policy_sha256') or '—')}</code></dd>\n"
-        )
     parts.append(f"""
 <h2 id="model">2. Model Identity &amp; Provenance</h2>
 <dl class="kv">
@@ -228,7 +195,7 @@ review by InfoSec and the Model Review &amp; Management Committee.</p>
   <dt>Last modified</dt><dd>{_esc(meta.get('last_modified') or '—')}</dd>
   <dt>Downloads</dt><dd>{_esc(meta.get('downloads') or '—')}</dd>
   <dt>File count</dt><dd>{sib_count}</dd>
-{dyn_rows}</dl>
+</dl>
 <details><summary>Show tags ({len(meta.get('tags', []))})</summary>
 <p>{', '.join(f'<code>{_esc(t)}</code>' for t in meta.get('tags', [])[:60])}</p>
 </details>
@@ -301,69 +268,8 @@ review by InfoSec and the Model Review &amp; Management Committee.</p>
 </div>
 """)
 
-    # 5. Behavioural evaluation
-    parts.append('<h2 id="eval">5. Behavioural Evaluation</h2>')
-    if (
-        isinstance(eval_summary, dict)
-        and "skipped" not in eval_summary
-        and eval_summary.get("categories")
-    ):
-        cat_cards: list[str] = []
-        all_examples: list[dict] = []
-        for cat, payload in eval_summary["categories"].items():
-            verdict = (payload.get("verdict") or "").lower()
-            pill_cls = {"pass": "pass", "warning": "warn", "fail": "fail"}.get(verdict, "warn")
-            pass_rate = (1.0 - float(payload.get("failure_rate", 0.0))) * 100.0
-            cat_cards.append(
-                f'<div class="card">'
-                f'<div class="n">{pass_rate:.1f}%</div>'
-                f'<div class="l">{_esc(cat.upper())} pass-rate</div>'
-                f'<div style="margin-top:6px;">'
-                f'<span class="gate {pill_cls}">{_esc((payload.get("verdict") or "").upper())}</span>'
-                f'</div>'
-                f'<div style="color:var(--muted);font-size:11px;margin-top:6px;">'
-                f'{_esc(payload.get("engine",""))} &middot; '
-                f'{payload.get("failures",0)}/{payload.get("probes_run",0)} failed</div>'
-                f'</div>'
-            )
-            for ex in (payload.get("examples") or []):
-                ex2 = dict(ex)
-                ex2.setdefault("category", cat)
-                all_examples.append(ex2)
-        parts.append(f'<div class="grid">{"".join(cat_cards)}</div>')
-
-        if all_examples:
-            ex_rows = "".join(
-                f"<tr><td>{_esc(e.get('category',''))}</td>"
-                f"<td><code>{_esc(e.get('probe',''))}</code></td>"
-                f"<td>{_esc((e.get('prompt') or '')[:120])}</td>"
-                f"<td>{_esc((e.get('output') or '')[:120])}</td></tr>"
-                for e in all_examples[:10]
-            )
-            parts.append(
-                '<h3>Top failed probes</h3>'
-                '<div class="scrollx"><table>'
-                '<thead><tr><th>Category</th><th>Probe</th><th>Prompt</th><th>Output</th></tr></thead>'
-                f'<tbody>{ex_rows}</tbody></table></div>'
-            )
-
-        policy_path = scan_dir / "reports" / "policy.applied.yaml"
-        if policy_path.exists():
-            policy_text = policy_path.read_text()
-            parts.append(
-                '<details><summary>Applied policy</summary>'
-                f'<pre><code>{_esc(policy_text)}</code></pre>'
-                '</details>'
-            )
-    else:
-        parts.append(
-            '<div id="eval-body" class="empty">'
-            'Behavioural eval results pending dynamic stage.'
-            '</div>'
-        )
-
-    # 6. License inventory (Python deps)
-    parts.append('<h2 id="licenses">6. Python Dependency License Inventory</h2>')
+    # 5. License inventory (Python deps)
+    parts.append('<h2 id="licenses">5. Python Dependency License Inventory</h2>')
     if isinstance(licenses, list) and licenses:
         risky = [
             l for l in licenses
@@ -390,9 +296,9 @@ review by InfoSec and the Model Review &amp; Management Committee.</p>
     else:
         parts.append('<div class="empty">No license inventory produced (pip-licenses unavailable).</div>')
 
-    # 7. Attestation
+    # 6. Attestation
     parts.append(f"""
-<h2 id="attestation">7. Attestation</h2>
+<h2 id="attestation">6. Attestation</h2>
 <p>I confirm that the scans documented in this report were executed against the model at the
 pinned commit SHA shown in Section 2, and that the SARIF file <code>scan_results.sarif</code>
 contains the complete machine-readable record of findings.</p>

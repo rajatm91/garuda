@@ -25,35 +25,22 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
     static_p = sub.add_parser("static", help="Static evidence-pack stage")
     _add_static_args(static_p)
-    dyn_p = sub.add_parser("dynamic", help="Behavioural-eval stage")
-    dyn_p.add_argument("scan_dir", type=Path)
-    dyn_p.add_argument("--model", required=True,
-                       help="LiteLLM model alias (e.g. Qwen/Qwen3-30B-A3B-Instruct-2507)")
-    dyn_p.add_argument("--policy", type=Path, default=Path("policy.yaml"))
-    all_p = sub.add_parser("all", help="static + dynamic + report")
-    all_src = all_p.add_mutually_exclusive_group(required=True)
-    all_src.add_argument("repo", nargs="?")
-    all_src.add_argument("--local-path", type=Path)
-    all_p.add_argument("--revision", default="main")
-    all_p.add_argument("--repo-id")
-    all_p.add_argument("--out", type=Path, default=None)
-    all_p.add_argument("--model", required=True,
-                      help="LiteLLM model alias (e.g. Qwen/Qwen3-30B-A3B-Instruct-2507)")
-    all_p.add_argument("--policy", type=Path, default=Path("policy.yaml"))
+    all_p = sub.add_parser("all", help="static + report")
+    _add_static_args(all_p)
     report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
     return parser
 
 
-def _cmd_static(args: argparse.Namespace) -> int:
+def _run_static(args: argparse.Namespace) -> Path | None:
     from .runner import run_static
 
     repo, local = args.repo, args.local_path
     if local is not None:
         repo = args.repo_id or f"local:{local.name}"
     if not repo:
-        print("static: must pass repo OR --local-path", file=sys.stderr)
-        return 2
+        print(f"{args.cmd}: must pass repo OR --local-path", file=sys.stderr)
+        return None
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe = repo.replace("/", "_")
     scan_dir = args.out or Path.cwd() / f"scan_{safe}_{ts}"
@@ -77,39 +64,20 @@ def _cmd_static(args: argparse.Namespace) -> int:
     m.mark_static_done(duration_s=time.monotonic() - t0, skipped_steps=skipped)
     save_manifest(m)
     print(f"Scan dir: {scan_dir}")
-    return 0
+    return scan_dir
+
+
+def _cmd_static(args: argparse.Namespace) -> int:
+    return 0 if _run_static(args) else 2
 
 
 def _cmd_all(args: argparse.Namespace) -> int:
-    from .runner import run_static, run_dynamic, run_report
+    from .runner import run_report
 
-    repo, local = args.repo, args.local_path
-    if local is not None:
-        repo = args.repo_id or f"local:{local.name}"
-    if not repo:
-        print("all: must pass repo OR --local-path", file=sys.stderr)
+    scan_dir = _run_static(args)
+    if scan_dir is None:
         return 2
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    safe = repo.replace("/", "_")
-    scan_dir = args.out or Path.cwd() / f"scan_{safe}_{ts}"
-
-    ctx = ScanContext(scan_dir=scan_dir, repo=repo,
-                      revision=args.revision, local_path=local)
-    m = Manifest.create(scan_dir=scan_dir, repo=repo, revision=args.revision,
-                        source_mode="local_path" if local else "hf",
-                        source_abs_path=str(local.resolve()) if local else None)
-    scan_dir.mkdir(parents=True, exist_ok=True)
-    save_manifest(m)
-
-    t0 = time.monotonic()
-    skipped = run_static(ctx)
-    m.mark_static_done(duration_s=time.monotonic() - t0, skipped_steps=skipped)
-    save_manifest(m)
-
-    run_dynamic(scan_dir=scan_dir, model_id=args.model, policy_path=args.policy)
-
     run_report(scan_dir)
-    print(f"Scan dir: {scan_dir}")
     return 0
 
 
@@ -119,10 +87,6 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_static(args)
     if args.cmd == "all":
         return _cmd_all(args)
-    if args.cmd == "dynamic":
-        from .runner import run_dynamic
-        run_dynamic(scan_dir=args.scan_dir, model_id=args.model, policy_path=args.policy)
-        return 0
     if args.cmd == "report":
         from .runner import run_report
         run_report(args.scan_dir)

@@ -9,20 +9,7 @@
 #     -v /host/models/mymodel:/models/mymodel:ro \
 #     -v /host/scans:/scans \
 #     garuda:airgap \
-#     static --local-path /models/mymodel --out /scans/run1
-#
-# Dynamic scan (requires LiteLLM proxy reachable from container):
-#   docker run --rm \
-#     -v /host/scans/run1:/scans/run1 \
-#     -v /host/policy.airgap.yaml:/etc/garuda/policy.yaml:ro \
-#     -e LITELLM_BASE_URL=http://litellm.internal:4000 \
-#     -e TARGET_MODEL_API_KEY=sk-... \
-#     -e LITELLM_API_KEY=sk-... \
-#     garuda:airgap \
-#     dynamic /scans/run1 --model ollama/llama3.1:8b
-#
-# NOTE: set offline: true in policy.yaml to skip probes that fetch
-# data from HuggingFace at runtime (realtoxicityprompts, trainingdata).
+#     all --local-path /models/mymodel --out /scans/run1
 
 FROM python:3.11-slim
 
@@ -34,14 +21,6 @@ ARG GITLEAKS_VERSION=8.21.2
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates tar \
     && rm -rf /var/lib/apt/lists/*
-
-# ── Node.js 22 (required for promptfoo) ───────────────────────────────────────
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN npm install -g promptfoo \
-    && npm cache clean --force
 
 # ── security scanner binaries (arch-aware) ────────────────────────────────────
 # syft + grype: amd64/arm64  |  gitleaks: x64/arm64
@@ -62,12 +41,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY src/ src/
 
-RUN uv sync --frozen --no-dev --extra dynamic
-
-# ── prime garak probe + detector registry ────────────────────────────────────
-RUN /app/.venv/bin/python -c \
-    "import garak.probes; import garak.detectors; print('garak registry primed')" \
-    2>&1 || true
+RUN uv sync --frozen --no-dev
 
 # ── cache grype CVE database in image (no update needed at runtime) ───────────
 RUN grype db update 2>&1 || true
@@ -76,10 +50,7 @@ RUN grype db update 2>&1 || true
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PROMPTFOO_DISABLE_TELEMETRY=1 \
     GRYPE_DB_AUTO_UPDATE=false
-
-COPY policy.yaml /etc/garuda/policy.yaml
 
 VOLUME ["/models", "/scans"]
 

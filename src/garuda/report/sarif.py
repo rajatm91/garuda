@@ -16,12 +16,7 @@ SARIF_SCHEMA = (
 )
 
 
-def build_sarif(
-    scan_dir: Path,
-    *,
-    is_local_source: bool,
-    dynamic_runs: list[dict] | None = None,
-) -> dict:
+def build_sarif(scan_dir: Path, *, is_local_source: bool) -> dict:
     runs: list[dict] = [build_review_run(scan_dir, is_local_source=is_local_source)]
     for builder in (build_modelaudit_run, build_picklescan_run, build_pip_audit_run):
         r = builder(scan_dir)
@@ -29,8 +24,6 @@ def build_sarif(
             runs.append(r)
     runs.extend(embed_runs(scan_dir / "raw" / "09_grype.sarif"))
     runs.extend(embed_runs(scan_dir / "raw" / "10_gitleaks.sarif"))
-    if dynamic_runs:
-        runs.extend(dynamic_runs)
     return {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": runs}
 
 

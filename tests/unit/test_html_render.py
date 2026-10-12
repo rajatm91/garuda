@@ -1,6 +1,5 @@
 import json
 
-from garuda.manifest import Manifest
 from garuda.report.html import build_html
 
 
@@ -19,10 +18,8 @@ def _scan(tmp_path):
 
 def test_html_renders_with_anchors(tmp_path):
     scan = _scan(tmp_path)
-    m = Manifest.create(scan_dir=scan, repo="meta-llama/Foo", revision="main",
-                        source_mode="hf", source_abs_path=None)
-    html = build_html(scan, sarif={"runs": []}, manifest=m)
-    for anchor in ("#summary", "#model", "#integrity", "#findings", "#eval", "#licenses", "#attestation"):
+    html = build_html(scan, sarif={"runs": []})
+    for anchor in ("#summary", "#model", "#integrity", "#findings", "#licenses", "#attestation"):
         assert anchor in html
     assert "modelaudit" in html.lower() or "modelaudit" in html
     assert "<!doctype html>" in html.lower() or "<!DOCTYPE html>" in html
