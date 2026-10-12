@@ -41,7 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
 def _run_static(args: argparse.Namespace) -> Path | None:
     from .runner import run_static
 
-    repo, local = args.repo, args.local_path
+    # absolute paths: tool subprocesses run with cwd=scan_dir, and weights/ is a symlink
+    repo = args.repo
+    local = args.local_path.resolve() if args.local_path else None
     if local is not None:
         repo = args.repo_id or f"local:{local.name}"
     if not repo:
@@ -52,7 +54,7 @@ def _run_static(args: argparse.Namespace) -> Path | None:
         return None
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     safe = repo.replace("/", "_")
-    scan_dir = args.out or Path.cwd() / f"scan_{safe}_{ts}"
+    scan_dir = (args.out or Path(f"scan_{safe}_{ts}")).resolve()
     ctx = ScanContext(
         scan_dir=scan_dir,
         repo=repo,
