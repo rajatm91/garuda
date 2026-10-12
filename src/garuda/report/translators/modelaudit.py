@@ -25,8 +25,19 @@ _DOC_SUFFIXES = (".md", ".rst", ".txt")
 _DOC_DOWNGRADE_TYPES = {"url_detected"}
 
 
-def _is_doc(location: str | None) -> bool:
-    return str(location or "").lower().endswith(_DOC_SUFFIXES)
+def _is_doc(scan_dir: Path, location: str | None) -> bool:
+    """True only for a real, top-level doc file of the model — fail closed otherwise.
+
+    The location string alone is not trusted: archive members are reported as
+    "archive.zip:member.md" and a pickle entry can end in ".txt", so a suffix check would
+    downgrade findings inside loadable artefacts.
+    """
+    rel = _model_path(location)
+    if not rel or ":" in rel or "!" in rel or not rel.lower().endswith(_DOC_SUFFIXES):
+        return False
+    root = (scan_dir / "weights").resolve()
+    f = root / rel
+    return (not f.is_symlink() and f.is_file() and f.resolve().is_relative_to(root))
 
 
 def _model_path(location: str | None) -> str | None:
@@ -74,7 +85,7 @@ def build_modelaudit_run(scan_dir: Path) -> dict | None:
         sev = (issue.get("severity") or "medium").lower()
         level = SEV2LEVEL.get(sev, "warning")
         location = issue.get("file") or issue.get("location")
-        if level == "warning" and dtype in _DOC_DOWNGRADE_TYPES and _is_doc(location):
+        if level == "warning" and dtype in _DOC_DOWNGRADE_TYPES and _is_doc(scan_dir, location):
             level = "note"
         rel = _model_path(location)
         line = _line_of(scan_dir, rel, details.get("position")) if isinstance(details, dict) \
@@ -102,7 +113,7 @@ def build_modelaudit_run(scan_dir: Path) -> dict | None:
             })
             reason = details.get("error") or details.get("scan_outcome_reason") or ""
             results.append(_result(
-                INCOMPLETE, "note" if _is_doc(check.get("location")) else "warning",
+                INCOMPLETE, "note" if _is_doc(scan_dir, check.get("location")) else "warning",
                 f"{check.get('name')}: {check.get('message')}" + (f" ({reason})" if reason else ""),
                 _model_path(check.get("location")),
                 {"check": check.get("name"), "scan_outcome": details.get("scan_outcome")},
