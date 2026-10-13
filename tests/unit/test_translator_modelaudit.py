@@ -98,3 +98,19 @@ def test_doc_downgrade_fails_closed(tmp_path):
     run = build_modelaudit_run(tmp_path)
     assert run is not None
     assert [r["level"] for r in run["results"]] == ["warning"] * 4
+
+
+def test_doc_network_errors_downgraded_but_not_in_templates(tmp_path):
+    (tmp_path / "raw").mkdir(); w = tmp_path / "weights"; w.mkdir()
+    (w / "README.md").write_text("import requests\n")
+    (w / "chat_template.jinja").write_text("{{ x }}")
+    iss = lambda t, loc: {"message": t, "severity": "high", "location": loc,
+                          "details": {"type": t}}
+    (tmp_path / "raw" / "04_modelaudit.json").write_text(json.dumps({"files_scanned": 2, "issues": [
+        iss("network_function", "/s/weights/README.md"),
+        iss("network_library", "/s/weights/README.md"),
+        iss("network_function", "/s/weights/chat_template.jinja"),
+    ]}))
+    run = build_modelaudit_run(tmp_path)
+    assert run is not None
+    assert [r["level"] for r in run["results"]] == ["note", "note", "error"]

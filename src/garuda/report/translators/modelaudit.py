@@ -20,9 +20,10 @@ INCOMPLETE = "MODELAUDIT-INCOMPLETE"
 # Docs are never loaded at inference time; a coverage cap there (e.g. modelaudit's hard-coded
 # 32-URL listing limit on a README) is informational, not a gap in what the model executes.
 _DOC_SUFFIXES = (".md", ".rst", ".txt")
-# URLs in docs are examples for readers (e.g. a hosted-API snippet in a README), not endpoints
-# the model contacts; in configs/templates/code they stay warnings.
-_DOC_DOWNGRADE_TYPES = {"url_detected"}
+# Network indicators in docs are examples for readers (a hosted-API snippet, a `requests.post`
+# client example, `--host 0.0.0.0`), not code the model runs; in configs/templates/code they
+# keep their severity. Templates (chat_template.jinja) are rendered at inference → never docs.
+_DOC_DOWNGRADE_TYPES = {"url_detected", "network_function", "network_library", "ipv4_address"}
 
 
 def _is_doc(scan_dir: Path, location: str | None) -> bool:
@@ -85,7 +86,8 @@ def build_modelaudit_run(scan_dir: Path) -> dict | None:
         sev = (issue.get("severity") or "medium").lower()
         level = SEV2LEVEL.get(sev, "warning")
         location = issue.get("file") or issue.get("location")
-        if level == "warning" and dtype in _DOC_DOWNGRADE_TYPES and _is_doc(scan_dir, location):
+        if level in ("warning", "error") and dtype in _DOC_DOWNGRADE_TYPES \
+                and _is_doc(scan_dir, location):
             level = "note"
         rel = _model_path(location)
         line = _line_of(scan_dir, rel, details.get("position")) if isinstance(details, dict) \
