@@ -164,7 +164,7 @@ def test_parse_errors_mark_incomplete_and_add_warnings(tmp_path: Path):
     with patch("garuda.stages.static.semgrep.run_tool", side_effect=_fake(json.dumps(sarif))), \
          patch("shutil.which", return_value="/usr/bin/semgrep"):
         r = step.run(ctx)
-    assert r.ran is False and "could not fully parse 1 file" in (r.skip_reason or "")
+    assert r.ran is False and "1 analysis problem" in (r.skip_reason or "")
     res = json.loads(r.output_path.read_text())["runs"][0]["results"]
     assert [(x["ruleId"], x["level"], x["locations"][0]["physicalLocation"]["artifactLocation"]["uri"])
             for x in res] == [(step.PARSE_RULE, "warning", "broken.py")]
@@ -182,3 +182,44 @@ def test_compiled_modules_reported(tmp_path: Path):
     run = json.loads(r.output_path.read_text())["runs"][0]
     assert run["properties"]["compiledFiles"] == ["__pycache__/modeling.cpython-314.pyc", "fast_ops.so"]
     assert {x["ruleId"] for x in run["results"]} == {step.COMPILED_RULE}
+
+
+def test_any_notification_or_unsuccessful_run_fails_closed(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    (ctx.weights_dir / "big.py").write_text("x = 1\n")
+    sarif = {"runs": [{"results": [], "invocations": [{"executionSuccessful": False,
+             "toolExecutionNotifications": [
+                 {"level": "warning", "descriptor": {"id": "Timeout"},
+                  "message": {"text": "Timeout when running rule r on ./big.py"}},
+                 {"level": "error", "descriptor": {"id": "Rule parse error"},
+                  "message": {"text": "Rule parse error in rule x"}}]}]}]}
+    with patch("garuda.stages.static.semgrep.run_tool", side_effect=_fake(json.dumps(sarif))), \
+         patch("shutil.which", return_value="/usr/bin/semgrep"):
+        r = step.run(ctx)
+    assert r.ran is False
+    res = json.loads(r.output_path.read_text())["runs"][0]["results"]
+    assert len(res) == 3 and all(x["ruleId"] == step.PARSE_RULE for x in res)
+    uris = [x.get("locations", [{}])[0].get("physicalLocation", {}).get("artifactLocation", {})
+            .get("uri") for x in res]
+    assert "big.py" in uris
+
+
+def test_uppercase_and_pyw_python_scanned_and_mapped_back(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    (ctx.weights_dir / "Modeling.PY").write_text("import os\n")
+    (ctx.weights_dir / "tool.pyw").write_text("import os\n")
+    seen: dict = {}
+    def fake(name, argv, *, cwd, **_):
+        seen["staged"] = sorted(str(p.relative_to(cwd)) for p in Path(cwd).rglob("*.py"))
+        Path(argv[argv.index("--output") + 1]).write_text(json.dumps({"runs": [{"results": [
+            {"ruleId": "r", "locations": [{"physicalLocation": {"artifactLocation":
+             {"uri": "Modeling.PY.py"}}}]}]}]}))
+        return MagicMock(exit_code=0)
+    with patch("garuda.stages.static.semgrep.run_tool", side_effect=fake), \
+         patch("shutil.which", return_value="/usr/bin/semgrep"):
+        r = step.run(ctx)
+    assert seen["staged"] == ["Modeling.PY.py", "tool.pyw.py"]
+    run = json.loads(r.output_path.read_text())["runs"][0]
+    assert run["properties"]["scannedFiles"] == ["Modeling.PY", "tool.pyw"]
+    assert run["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] \
+        == "Modeling.PY"
