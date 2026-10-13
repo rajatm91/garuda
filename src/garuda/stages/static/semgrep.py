@@ -92,7 +92,8 @@ def _scan(ctx: ScanContext, code: list[Path], targets: list[str], configs: list[
             shutil.copyfile(src, dst)
         argv = [BIN, "scan", "--sarif", "--output", str(out_path), "--metrics=off",
                 "--disable-version-check", "--no-git-ignore", "--max-target-bytes=0",
-                "--timeout=0", "--quiet"]  # no per-file size/time caps that silently skip
+                "--timeout=0", "--disable-nosem",  # model code can't "# nosemgrep" itself
+                "--quiet"]  # no per-file size/time caps that silently skip
         for c in configs:
             argv += ["--config", c]
         # Untrusted filenames: "./" prefix so "--config=…"/"--exclude=…" is never a flag.

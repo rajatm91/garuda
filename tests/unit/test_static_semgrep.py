@@ -46,7 +46,7 @@ def test_runs_on_shipped_code_with_bundled_and_extra_configs(tmp_path: Path, mon
     assert configs == [str(step.BUNDLED_RULES), "/opt/r/python.yml", "/opt/r/audit.yml"]
     assert "--metrics=off" in argv and argv[-2:] == ["./modeling.py", "./sub/audio.py"]
     assert rt.call_args.kwargs["cwd"] != ctx.weights_dir  # private staging copy
-    assert "--max-target-bytes=0" in argv
+    assert "--max-target-bytes=0" in argv and "--disable-nosem" in argv
 
 
 def test_missing_binary_and_bad_output_are_skips(tmp_path: Path):

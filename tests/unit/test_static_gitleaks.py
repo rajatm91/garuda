@@ -30,6 +30,10 @@ def test_gitleaks_happy_path_runs_twice(tmp_path: Path):
     assert r.ran is True
     argv = rt.call_args.args[1]
     assert argv[argv.index("--max-target-megabytes") + 1] == "100"
+    assert "--ignore-gitleaks-allow" in argv  # model can't silence itself
+    cfg = argv[argv.index("--config") + 1]
+    assert "useDefault = true" in Path(cfg).read_text()
+    assert Path(argv[argv.index("--gitleaks-ignore-path") + 1]).is_dir()
 
 
 def test_gitleaks_stale_report_is_not_reused(tmp_path: Path):

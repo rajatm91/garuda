@@ -33,7 +33,7 @@ def build_sarif(scan_dir: Path, *, is_local_source: bool) -> dict:
     if (hf := build_hf_security_run(scan_dir)) is not None:
         runs.append(hf)
     log = {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": runs}
-    return apply_suppressions(apply_notes(log, load_notes(scan_dir)))
+    return apply_suppressions(apply_notes(log, load_notes(scan_dir)), scan_dir)
 
 
 def write_sarif(scan_dir: Path, log: dict) -> Path:

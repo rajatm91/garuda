@@ -30,8 +30,15 @@ def run(ctx: ScanContext) -> StageResult:
         p.unlink(missing_ok=True)  # never mistake a previous run's report for this one
     # Secrets live in configs/tokenizer/README, not in multi-GB weight shards; skipping
     # big files keeps each pass from re-reading the whole model.
+    # The model is untrusted: never honour "gitleaks:allow" comments, a shipped .gitleaksignore,
+    # or a shipped .gitleaks.toml. Force the built-in rules and an empty ignore location.
+    cfg = ctx.raw_dir / "10_gitleaks.config.toml"
+    cfg.write_text("[extend]\nuseDefault = true\n")
+    no_ignore = ctx.raw_dir / "10_gitleaks.noignore"
+    no_ignore.mkdir(exist_ok=True)
     common = ["detect", "--no-git", "--source", str(ctx.scan_dir),
-              "--max-target-megabytes", str(MAX_TARGET_MB)]
+              "--max-target-megabytes", str(MAX_TARGET_MB), "--config", str(cfg),
+              "--gitleaks-ignore-path", str(no_ignore), "--ignore-gitleaks-allow"]
     run_tool(BIN, [BIN, *common, "--report-format", "json", "--report-path", str(json_p)],
              cwd=ctx.scan_dir)
     run_tool(BIN, [BIN, *common, "--report-format", "sarif", "--report-path", str(sarif_p)],
