@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..util.io import write_json
 from .translators.embed import embed_runs
+from .translators.hf_security import build_hf_security_run
 from .translators.modelaudit import build_modelaudit_run
 from .translators.picklescan import build_picklescan_run
 from .translators.pip_audit import build_pip_audit_run
@@ -27,6 +28,8 @@ def build_sarif(scan_dir: Path, *, is_local_source: bool) -> dict:
     runs.extend(embed_runs(scan_dir / "raw" / "09_grype.sarif"))
     runs.extend(embed_runs(scan_dir / "raw" / "10_gitleaks.sarif"))
     runs.extend(embed_runs(scan_dir / "raw" / "12_semgrep.sarif"))
+    if (hf := build_hf_security_run(scan_dir)) is not None:
+        runs.append(hf)
     return {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": runs}
 
 

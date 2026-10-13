@@ -16,6 +16,7 @@ from .stages.static import (  # noqa: F401  — populated into module namespace 
     format_inventory,
     gitleaks,
     grype,
+    hf_security,
     licenses,
     metadata,
     modelaudit,
@@ -48,6 +49,7 @@ def _static_steps() -> list[tuple[str, ModuleType]]:
         ("10_gitleaks",         m.gitleaks),
         ("11_provenance",       m.provenance),
         ("12_semgrep",          m.semgrep),
+        ("13_hf_security",      m.hf_security),
     ]
 
 

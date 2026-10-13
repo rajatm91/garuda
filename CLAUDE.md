@@ -32,7 +32,7 @@ uv run scan report <scan_dir>
 Two-stage pipeline. Static writes `scan_<repo>_<UTC>/raw/`; report reads it.
 
 ```
-scan static  → raw/01_metadata.json .. raw/12_semgrep.sarif
+scan static  → raw/01_metadata.json .. raw/13_hf_security.json
 scan report  → reports/scan_results.sarif + reports/scan_report.html
 ```
 
@@ -42,7 +42,7 @@ Key modules:
 - `src/garuda/runner.py` — `run_static`, `run_report`.
 - `src/garuda/context.py` — `ScanContext`, `StageResult` (frozen dataclasses).
 - `src/garuda/manifest.py` — `manifest.json` lifecycle (explicit pipeline state).
-- `src/garuda/stages/static/*.py` — one module per static step 01–12 (11 = provenance: published-hash check, `model.sig` via model-signing, publisher identity; 12 = semgrep over shipped custom `*.py`, bundled rules in `semgrep_rules.yaml`, extra packs via `GARUDA_SEMGREP_CONFIGS`). Soft-fail discipline: missing tool → `{"skipped": "..."}` stub.
+- `src/garuda/stages/static/*.py` — one module per static step 01–12 (11 = provenance: published-hash check, `model.sig` via model-signing, publisher identity; 12 = semgrep over shipped custom `*.py`, bundled rules in `semgrep_rules.yaml`, extra packs via `GARUDA_SEMGREP_CONFIGS`; 13 = Hugging Face's own security-scan results). Soft-fail discipline: missing tool → `{"skipped": "..."}` stub.
 - `src/garuda/report/sarif.py` — aggregator (multiple `runs` per SARIF log).
 - `src/garuda/report/html.py` — self-contained HTML report (no CDN).
 - `src/garuda/report/translators/*.py` — per-tool JSON/JSONL → SARIF run.
