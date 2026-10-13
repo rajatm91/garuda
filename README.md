@@ -44,6 +44,7 @@ scan report scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/
 | `HF_TOKEN` | Static + HF source | Required for gated models (Llama, Gemma, some Qwen) |
 | `GRYPE_DB_AUTO_UPDATE` | Static + offline | Set `false` to skip CVE DB refresh |
 | `SCAN_DEBUG` | Any | Set `1` to enable DEBUG logs |
+| `GARUDA_IGNORE_FILES` | Report | Comma-separated file names whose findings are suppressed (SARIF `suppressions`, excluded from verdict). Default `README.md`; set empty to disable |
 
 ## 4. Output structure
 

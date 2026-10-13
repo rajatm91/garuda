@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..util.io import write_json
+from .review_notes import apply_notes, load_notes
+from .suppress import apply_suppressions
 from .translators.embed import embed_runs
 from .translators.hf_security import build_hf_security_run
 from .translators.modelaudit import build_modelaudit_run
@@ -30,7 +32,8 @@ def build_sarif(scan_dir: Path, *, is_local_source: bool) -> dict:
     runs.extend(embed_runs(scan_dir / "raw" / "12_semgrep.sarif"))
     if (hf := build_hf_security_run(scan_dir)) is not None:
         runs.append(hf)
-    return {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": runs}
+    log = {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": runs}
+    return apply_suppressions(apply_notes(log, load_notes(scan_dir)))
 
 
 def write_sarif(scan_dir: Path, log: dict) -> Path:

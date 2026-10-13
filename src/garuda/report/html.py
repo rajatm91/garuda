@@ -9,6 +9,8 @@ from typing import Any
 
 from ..util.io import load_json
 from .model_card import model_summary
+from .review_notes import load_notes
+from .suppress import is_suppressed
 
 # ---------------------------------------------------------------------------
 # CSS — embedded, no external deps. Light theme only (+ print).
@@ -134,6 +136,13 @@ td.rule code { white-space: nowrap; word-break: normal; }
 td.loc { color: var(--muted); font-size: 13px; }
 td.loc code { word-break: break-word; }
 td.loc .ln { display: block; font-size: 12px; margin-top: 2px; }
+.rnote { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px; padding: 6px 8px;
+  border-radius: 8px; background: var(--note-bg); border: 1px solid var(--note-bd);
+  color: var(--note); font-size: 12.5px; }
+.panel.notes { border-left: 4px solid var(--primary); }
+.panel.notes h3 { display: flex; gap: 6px; align-items: center; }
+.panel.notes ul { margin: 0; padding-left: 18px; } .panel.notes li { margin: 6px 0; }
+.panel.notes li div { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
 ul.locs { columns: 2 260px; margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; }
 
 /* badges */
@@ -265,8 +274,11 @@ def _rows(results: list[dict]) -> str:
             msg = _esc(r.get("message", {}).get("text", ""))
             props = "; ".join(
                 f"{_esc(k)}={_esc(v)}" for k, v in (r.get("properties") or {}).items()
-                if not isinstance(v, (list, dict)) and v is not None
+                if not isinstance(v, (list, dict)) and v is not None and k != "reviewerNote"
             )
+            note = (r.get("properties") or {}).get("reviewerNote")
+            if note:
+                msg += f'<div class="rnote">{_icon("info")}<span>{_esc(note)}</span></div>' 
             loc = _found_in(r)
             if len(grp) > 1:
                 files = "".join(f"<li>{_found_in(x)}</li>" for x in grp if _uri(x))
@@ -291,14 +303,19 @@ COLLAPSE_WARNINGS = {"modelaudit"}
 
 def _render_results(results: list[dict], *, collapse_warnings: bool = False) -> str:
     """Errors always shown; informational (and optionally warning) results folded away."""
+    ignored = sum(1 for r in results if is_suppressed(r))
+    results = [r for r in results if not is_suppressed(r)]
+    note = (f'<p class="sub" style="margin:0 0 8px">{ignored} finding(s) in ignored files '
+            "(e.g. README.md) excluded by scan policy.</p>") if ignored else ""
     if not results:
-        return f'<div class="empty">{_icon("check")} No findings recorded.</div>'
+        return note + f'<div class="empty">{_icon("check")} No findings recorded.</div>'
     by_level: dict[str, list[dict]] = {"error": [], "warning": [], "note": []}
     for r in results:
         by_level.get(r.get("level", "note"), by_level["note"]).append(r)
     errors, warns, notes = by_level["error"], by_level["warning"], by_level["note"]
 
     shown = errors + ([] if collapse_warnings else warns)
+    out_prefix = note
     folded = [("warning", warns)] if collapse_warnings else []
     folded.append(("informational", notes))
     out = _rows(shown) if shown else ""
@@ -311,7 +328,7 @@ def _render_results(results: list[dict], *, collapse_warnings: bool = False) -> 
         out += (f"<details><summary>Show {len(items)} {label}"
                 f"{'s' if label == 'warning' and len(items) != 1 else ''}</summary>"
                 f"{_rows(items)}</details>")
-    return out
+    return out_prefix + out
 
 
 def _scanned_files(run: dict) -> str:
@@ -323,6 +340,18 @@ def _scanned_files(run: dict) -> str:
     return (f'<p class="sub" style="margin:0 0 8px">Scanned {len(files)} model code file(s) '
             f"shipped in the repo (not the scanner's own code).</p>"
             f"<details><summary>Show scanned files</summary><ul class=locs>{items}</ul></details>")
+
+
+def _notes_panel(notes: list[dict]) -> str:
+    if not notes:
+        return ""
+    items = "".join(
+        f'<li><strong>{_esc(n["title"])}</strong>'
+        f'{f" <code>{_esc(n["applies_to"])}</code>" if n["applies_to"] else ""}'
+        f'<div>{_esc(n["note"])}</div></li>' for n in notes
+    )
+    return (f'<div class="panel notes" style="margin-top:16px"><h3>{_icon("info")} Reviewer notes'
+            f'</h3><ul>{items}</ul></div>')
 
 
 def _fact(icon: str, key: str, value: str, detail: str = "", wide: bool = False) -> str:
@@ -339,10 +368,14 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
 
     level_counts: Counter = Counter()
     tool_counts: dict[str, Counter] = {}
+    suppressed: Counter = Counter()  # per tool, policy-ignored (e.g. README.md)
     for run in sarif.get("runs", []):
         name = run.get("tool", {}).get("driver", {}).get("name", "unknown")
         tool_counts.setdefault(name, Counter())
         for res in run.get("results", []):
+            if is_suppressed(res):
+                suppressed[name] += 1
+                continue
             lvl = res.get("level", "note")
             level_counts[lvl] += 1
             tool_counts[name][lvl] += 1
@@ -422,14 +455,15 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
   <div class="kpi neutral"><div class="n">{len(sha_inv.get("files", []))}</div><div class="l">{_icon("hash")}Weight files hashed</div></div>
   <div class="kpi {"err" if unsafe else "ok"}"><div class="n">{unsafe}</div><div class="l">{_icon("file")}Unsafe-format files</div></div>
 </div>
-<div class="panel" style="margin-top:16px">
+{_notes_panel(load_notes(scan_dir))}<div class="panel" style="margin-top:16px">
   <h3>Finding distribution</h3>
   <div class="dist" role="img" aria-label="{errors} errors, {warnings} warnings, {notes} informational">
     <span class="e" style="width:{pct(errors)}"></span><span class="w" style="width:{pct(warnings)}"></span><span class="i" style="width:{pct(notes)}"></span>
   </div>
   <div class="legend"><span><i style="background:var(--err)"></i>{errors} errors</span>
     <span><i style="background:var(--warn)"></i>{warnings} warnings</span>
-    <span><i style="background:var(--note);opacity:.55"></i>{notes} informational</span></div>
+    <span><i style="background:var(--note);opacity:.55"></i>{notes} informational</span>
+    {f"<span>{sum(suppressed.values())} ignored by policy (README.md)</span>" if suppressed else ""}</div>
   {f'''<div class="scrollx" style="margin-top:16px"><table><thead><tr><th>Tool</th>
   <th class=num>Errors</th><th class=num>Warnings</th><th class=num>Info</th></tr></thead>
   <tbody>{tool_rows}</tbody></table></div>''' if tool_rows else ""}
