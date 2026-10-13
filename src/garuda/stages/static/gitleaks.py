@@ -36,7 +36,9 @@ def run(ctx: ScanContext) -> StageResult:
     cfg.write_text("[extend]\nuseDefault = true\n")
     no_ignore = ctx.raw_dir / "10_gitleaks.noignore"
     no_ignore.mkdir(exist_ok=True)
-    common = ["detect", "--no-git", "--source", str(ctx.scan_dir),
+    # Scan only the model's files: scan_dir also holds garuda's own outputs (raw/, reports/),
+    # whose commit SHAs/hashes trip secret rules and are not model content.
+    common = ["detect", "--no-git", "--source", str(ctx.weights_dir),
               "--max-target-megabytes", str(MAX_TARGET_MB), "--config", str(cfg),
               "--gitleaks-ignore-path", str(no_ignore), "--ignore-gitleaks-allow"]
     run_tool(BIN, [BIN, *common, "--report-format", "json", "--report-path", str(json_p)],
