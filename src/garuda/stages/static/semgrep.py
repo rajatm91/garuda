@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -34,7 +35,8 @@ def run(ctx: ScanContext) -> StageResult:
 
     code = model_files(ctx.weights_dir, "*.py")  # no symlinks / nothing outside the model
     unscanned = _unscannable_code(ctx.weights_dir)  # still importable → must be reported
-    if not code and not unscanned:
+    compiled = _compiled_code(ctx.weights_dir)      # importable, but not reviewable as source
+    if not code and not unscanned and not compiled:
         return skip("model ships no Python code")
     if shutil.which(BIN) is None:
         return skip(f"{BIN} not installed (runs in the garuda Docker image)")
@@ -53,7 +55,13 @@ def run(ctx: ScanContext) -> StageResult:
     else:
         sarif = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "Semgrep OSS"}},
                                                 "results": []}]}
-    write_json(out_path, _annotate(sarif, configs, targets, unscanned))
+    sarif = _annotate(sarif, configs, targets, unscanned, compiled)
+    partial = _parse_failures(sarif)
+    write_json(out_path, sarif)
+    if partial:  # semgrep exits 0 on syntax errors: those files were (partly) not analysed
+        return StageResult(ran=False, duration_s=time.monotonic() - t0, output_path=out_path,
+                           skip_reason=f"{BIN} could not fully parse {len(partial)} file(s): "
+                                       f"{', '.join(partial[:5])}")
     if exit_code != 0:  # semgrep exits 0 with findings; non-zero = errors → partial result
         return StageResult(ran=False, duration_s=time.monotonic() - t0, output_path=out_path,
                            skip_reason=f"{BIN} exit={exit_code}: results may be incomplete "
@@ -80,7 +88,7 @@ def _scan(ctx: ScanContext, code: list[Path], targets: list[str], configs: list[
             shutil.copyfile(src, dst)
         argv = [BIN, "scan", "--sarif", "--output", str(out_path), "--metrics=off",
                 "--disable-version-check", "--no-git-ignore", "--max-target-bytes=0",
-                "--quiet"]
+                "--timeout=0", "--quiet"]  # no per-file size/time caps that silently skip
         for c in configs:
             argv += ["--config", c]
         # Untrusted filenames: "./" prefix so "--config=…"/"--exclude=…" is never a flag.
@@ -105,6 +113,42 @@ def _unscannable_code(root: Path) -> list[str]:
 
 
 UNSCANNED_RULE = "garuda.model-code.unscanned-code"
+COMPILED_RULE = "garuda.model-code.compiled-code"
+PARSE_RULE = "garuda.model-code.not-fully-parsed"
+_COMPILED_SUFFIXES = {".pyc", ".pyo", ".so", ".pyd", ".dylib", ".dll"}
+_SYNTAX_AT = re.compile(r"at line (?P<file>\S+?):\d+")
+
+
+def _compiled_code(root: Path) -> list[str]:
+    """Native/bytecode modules custom code could import — no source to review."""
+    return sorted(str(p.relative_to(root)) for p in root.rglob("*")
+                  if p.suffix.lower() in _COMPILED_SUFFIXES and not is_hf_cache(p.relative_to(root)))
+
+
+def _parse_failures(sarif: dict) -> list[str]:
+    """Files semgrep reported syntax/parse errors for, added as warning results.
+
+    semgrep keeps exit 0 and executionSuccessful=true and only emits a warning notification,
+    so a file written in syntax semgrep can't parse (or simply broken) would look scanned."""
+    files: list[str] = []
+    for run in sarif.get("runs") or []:
+        for inv in run.get("invocations") or []:
+            for n in inv.get("toolExecutionNotifications") or []:
+                text = (n.get("message") or {}).get("text") or ""
+                kind = (n.get("descriptor") or {}).get("id") or ""
+                if "syntax error" not in (kind + text).lower() and n.get("level") != "error":
+                    continue
+                m = _SYNTAX_AT.search(text)
+                f = (m.group("file") if m else "") .removeprefix("./")
+                files.append(f or "<unknown>")
+                run.setdefault("results", []).append({
+                    "ruleId": PARSE_RULE, "level": "warning",
+                    "message": {"text": "semgrep could not fully parse this file, so parts of it "
+                                        f"were not analysed: {text.splitlines()[0][:200]}"},
+                    **({"locations": [{"physicalLocation": {"artifactLocation": {"uri": f}}}]}
+                       if f else {}),
+                })
+    return sorted(set(files))
 
 
 def _rule_prefixes(configs: list[str]) -> list[str]:
@@ -120,7 +164,7 @@ def _rule_prefixes(configs: list[str]) -> list[str]:
 
 
 def _annotate(sarif: dict, configs: list[str], targets: list[str],
-              unscanned: list[str] | None = None) -> dict:
+              unscanned: list[str] | None = None, compiled: list[str] | None = None) -> dict:
     prefixes = _rule_prefixes(configs)
 
     def clean(text: str) -> str:
@@ -150,4 +194,13 @@ def _annotate(sarif: dict, configs: list[str], targets: list[str],
              "locations": [{"physicalLocation": {"artifactLocation": {"uri": rel}}}]}
             for rel in unscanned)
         run["properties"]["unscannedFiles"] = unscanned
+    if compiled and sarif.get("runs"):
+        run = sarif["runs"][0]
+        run.setdefault("results", []).extend(
+            {"ruleId": COMPILED_RULE, "level": "warning",
+             "message": {"text": "Compiled/native module shipped with the model — it can be "
+                                 "imported by custom code but has no source to review."},
+             "locations": [{"physicalLocation": {"artifactLocation": {"uri": rel}}}]}
+            for rel in compiled)
+        run.setdefault("properties", {})["compiledFiles"] = compiled
     return sarif

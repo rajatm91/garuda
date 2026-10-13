@@ -34,9 +34,8 @@ def model_files(root: Path, pattern: str) -> list[Path]:
 
     Model content is untrusted: skip symlinks and anything resolving outside root (a
     shipped ``requirements.txt -> ~/.ssh/config`` must not leak host files into the
-    report), and the HF download cache — only snapshot_download's own top-level
-    ``.cache/huggingface/``; any other ``.cache`` dir is model content and is included so
-    nothing can hide there.
+    report), and snapshot_download's own bookkeeping files (see ``is_hf_cache``). Everything
+    else — including files a repo commits under ``.cache/`` — is model content.
     """
     real_root = root.resolve()
     return sorted(
@@ -47,5 +46,15 @@ def model_files(root: Path, pattern: str) -> list[Path]:
     )
 
 
+_HF_BOOKKEEPING_SUFFIXES = {".metadata", ".lock", ".incomplete"}
+
+
 def is_hf_cache(rel: Path) -> bool:
-    return rel.parts[:2] == (".cache", "huggingface")
+    """Only files snapshot_download itself writes. A repo can commit files under
+    .cache/huggingface/ too (they land in the same place), so match exact names, never a
+    whole directory: download/**/*.{metadata,lock,incomplete} and the .gitignore."""
+    if rel.parts[:2] != (".cache", "huggingface"):
+        return False
+    if rel == Path(".cache/huggingface/.gitignore"):
+        return True
+    return rel.parts[2:3] == ("download",) and rel.suffix in _HF_BOOKKEEPING_SUFFIXES

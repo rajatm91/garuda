@@ -122,8 +122,9 @@ def test_staging_ignores_model_semgrepignore_and_default_excludes(tmp_path: Path
     (ctx.weights_dir / "tests" / "evil.py").write_text("import os\n")  # default-ignored dir
     (ctx.weights_dir / "sub" / ".cache").mkdir(parents=True)
     (ctx.weights_dir / "sub" / ".cache" / "hidden.py").write_text("x = 1\n")
-    (ctx.weights_dir / ".cache" / "huggingface").mkdir(parents=True)
-    (ctx.weights_dir / ".cache" / "huggingface" / "hf.py").write_text("x = 1\n")  # HF's own
+    (ctx.weights_dir / ".cache" / "huggingface" / "download").mkdir(parents=True)
+    (ctx.weights_dir / ".cache" / "huggingface" / "download" / "x.metadata").write_text("m")
+    (ctx.weights_dir / ".cache" / "huggingface" / "planted.py").write_text("x = 1\n")  # repo-committed
     seen: dict = {}
     def fake(name, argv, *, cwd, **_):
         stage = Path(cwd)
@@ -136,7 +137,8 @@ def test_staging_ignores_model_semgrepignore_and_default_excludes(tmp_path: Path
         r = step.run(ctx)
     assert r.ran is True
     assert seen["ignore"] == ""  # model's .semgrepignore not used, defaults disabled
-    assert seen["files"] == ["sub/.cache/hidden.py", "tests/evil.py"]
+    assert seen["files"] == [".cache/huggingface/planted.py", "sub/.cache/hidden.py",
+                             "tests/evil.py"]
 
 
 def test_symlinked_code_is_reported_not_silently_skipped(tmp_path: Path):
@@ -151,3 +153,32 @@ def test_symlinked_code_is_reported_not_silently_skipped(tmp_path: Path):
     run = json.loads(r.output_path.read_text())["runs"][0]
     assert [(x["ruleId"], x["level"]) for x in run["results"]] == [(step.UNSCANNED_RULE, "error")]
     assert run["properties"]["unscannedFiles"] == ["modeling.py"]
+
+
+def test_parse_errors_mark_incomplete_and_add_warnings(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    (ctx.weights_dir / "broken.py").write_text("os.system(\n")
+    sarif = {"runs": [{"results": [], "invocations": [{"executionSuccessful": True,
+             "toolExecutionNotifications": [{"level": "warning", "descriptor": {"id": "Syntax error"},
+             "message": {"text": "Syntax error at line ./broken.py:1:  `(` was unexpected"}}]}]}]}
+    with patch("garuda.stages.static.semgrep.run_tool", side_effect=_fake(json.dumps(sarif))), \
+         patch("shutil.which", return_value="/usr/bin/semgrep"):
+        r = step.run(ctx)
+    assert r.ran is False and "could not fully parse 1 file" in (r.skip_reason or "")
+    res = json.loads(r.output_path.read_text())["runs"][0]["results"]
+    assert [(x["ruleId"], x["level"], x["locations"][0]["physicalLocation"]["artifactLocation"]["uri"])
+            for x in res] == [(step.PARSE_RULE, "warning", "broken.py")]
+
+
+def test_compiled_modules_reported(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    (ctx.weights_dir / "modeling.py").write_text("x = 1\n")
+    (ctx.weights_dir / "__pycache__").mkdir()
+    (ctx.weights_dir / "__pycache__" / "modeling.cpython-314.pyc").write_bytes(b"\x00")
+    (ctx.weights_dir / "fast_ops.so").write_bytes(b"\x7fELF")
+    with patch("garuda.stages.static.semgrep.run_tool", side_effect=_fake('{"runs": [{}]}')), \
+         patch("shutil.which", return_value="/usr/bin/semgrep"):
+        r = step.run(ctx)
+    run = json.loads(r.output_path.read_text())["runs"][0]
+    assert run["properties"]["compiledFiles"] == ["__pycache__/modeling.cpython-314.pyc", "fast_ops.so"]
+    assert {x["ruleId"] for x in run["results"]} == {step.COMPILED_RULE}
