@@ -314,6 +314,17 @@ def _render_results(results: list[dict], *, collapse_warnings: bool = False) -> 
     return out
 
 
+def _scanned_files(run: dict) -> str:
+    """Which model files a code scanner evaluated (semgrep step 12)."""
+    files = (run.get("properties") or {}).get("scannedFiles") or []
+    if not files:
+        return ""
+    items = "".join(f"<li><code>{_esc(f)}</code></li>" for f in files)
+    return (f'<p class="sub" style="margin:0 0 8px">Scanned {len(files)} model code file(s) '
+            f"shipped in the repo (not the scanner's own code).</p>"
+            f"<details><summary>Show scanned files</summary><ul class=locs>{items}</ul></details>")
+
+
 def _fact(icon: str, key: str, value: str, detail: str = "", wide: bool = False) -> str:
     return (f'<div class="fact{" wide" if wide else ""}"><div class="k">{_icon(icon)}{key}</div>'
             f'<div class="v">{value}</div>{f"<div class=d>{detail}</div>" if detail else ""}</div>')
@@ -514,7 +525,7 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
   <header><h3>{_icon("tool")}{_esc(name)}<span class="ver">{f"v{_esc(version)}" if version and version != "unknown" else ""}{docs}</span></h3>
     <div class="counts">{_badge("error", c.get("error", 0))}{_badge("warning", c.get("warning", 0))}{_badge("note", c.get("note", 0))}</div>
   </header>
-  <div class="body">{_render_results(run.get("results", []), collapse_warnings=name in COLLAPSE_WARNINGS)}</div>
+  <div class="body">{_scanned_files(run)}{_render_results(run.get("results", []), collapse_warnings=name in COLLAPSE_WARNINGS)}</div>
 </article>
 """)
     parts.append("</section>")

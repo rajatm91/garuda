@@ -117,6 +117,7 @@ Pipeline state. `stages.static.skipped_steps` lists steps whose tool was absent 
 | `09_grype.{json,sarif}` | grype CVE |
 | `10_gitleaks.{json,sarif}` | gitleaks secrets |
 | `11_provenance.json` | hash check vs HF-published hashes, `model.sig` signature, publisher identity |
+| `12_semgrep.sarif` | semgrep over custom `*.py` the model ships (runs in the Docker image; skipped if no Python code) |
 
 Files containing `{"skipped": "..."}` = tool absent or soft-failed. Pipeline continues.
 

@@ -50,7 +50,7 @@ scan report scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/
 Every run creates `scan_<repo>_<UTC>/`:
 
 - `manifest.json` — pipeline state, tool versions, skipped steps.
-- `raw/01_metadata.json` through `raw/11_provenance.json` — native + translated outputs.
+- `raw/01_metadata.json` through `raw/12_semgrep.sarif` — native + translated outputs.
 - `reports/scan_results.sarif` — single aggregated SARIF 2.1.0 log (submit to GHAS, DefectDojo, etc).
 - `reports/scan_report.html` — self-contained HTML for ticket attachment.
 
@@ -69,6 +69,7 @@ Every run creates `scan_<repo>_<UTC>/`:
 | 09 | `09_grype.{json,sarif}` | grype | CVEs from SBOM |
 | 10 | `10_gitleaks.{json,sarif}` | gitleaks | Secrets |
 | 11 | `11_provenance.json` | huggingface_hub, model-signing | Local hashes vs HF-published LFS hashes; `model.sig` signature; publisher identity |
+| 12 | `12_semgrep.sarif` | semgrep (Docker image) | Custom Python code the model ships (`trust_remote_code`): process exec, eval/exec, network, remote fetches, unsafe deserialization, native loading — bundled garuda rules + `p/python` + `p/security-audit` |
 
 Missing tool → `{"skipped": ...}` stub; step listed in `manifest.json` `stages.static.skipped_steps`.
 

@@ -26,6 +26,7 @@ def build_sarif(scan_dir: Path, *, is_local_source: bool) -> dict:
             runs.append(r)
     runs.extend(embed_runs(scan_dir / "raw" / "09_grype.sarif"))
     runs.extend(embed_runs(scan_dir / "raw" / "10_gitleaks.sarif"))
+    runs.extend(embed_runs(scan_dir / "raw" / "12_semgrep.sarif"))
     return {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": runs}
 
 

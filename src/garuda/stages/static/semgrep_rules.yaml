@@ -1,0 +1,130 @@
+# garuda bundled semgrep rules — red flags in custom model code (trust_remote_code).
+# Always applied (offline). Registry packs can be added via GARUDA_SEMGREP_CONFIGS.
+rules:
+  - id: garuda.model-code.process-execution
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Model code starts an OS process. Code loaded with trust_remote_code should never
+      spawn shells or subprocesses.
+    pattern-either:
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+      - patterns:  # os.execv/execl*/spawn* — metavariables can't be part of a name
+          - pattern: os.$FN(...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(exec|spawn)\w*$
+      - pattern: subprocess.$F(...)
+      - pattern: pty.spawn(...)
+      - pattern: commands.getoutput(...)
+
+  - id: garuda.model-code.dynamic-eval
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Model code evaluates a non-literal string with eval/exec/compile — arbitrary code
+      execution at load time.
+    patterns:
+      - pattern-either:
+          - pattern: eval($X, ...)
+          - pattern: exec($X, ...)
+          - pattern: compile($X, ...)
+      - pattern-not: eval("...", ...)
+      - pattern-not: exec("...", ...)
+      - pattern-not: compile("...", ...)
+
+  - id: garuda.model-code.decode-then-exec
+    languages: [python]
+    severity: ERROR
+    message: Obfuscated payload — decoded bytes are executed.
+    pattern-either:
+      - pattern: exec(base64.$D(...), ...)
+      - pattern: eval(base64.$D(...), ...)
+      - pattern: exec(zlib.decompress(...), ...)
+      - pattern: exec(codecs.decode(...), ...)
+      - pattern: exec(bytes.fromhex(...), ...)
+
+  - id: garuda.model-code.network-access
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Model code opens a network connection. Inference code should not need network access;
+      verify the endpoint and what data is sent.
+    pattern-either:
+      - pattern: socket.socket(...)
+      - pattern: socket.create_connection(...)
+      - pattern: urllib.request.urlopen(...)
+      - pattern: urllib.request.urlretrieve(...)
+      - pattern: urllib.request.build_opener(...)
+      - pattern: urllib.request.Request(...)
+      - pattern: http.client.HTTPConnection(...)
+      - pattern: http.client.HTTPSConnection(...)
+      - pattern: requests.$M(...)
+      - pattern: httpx.$M(...)
+      - pattern: aiohttp.ClientSession(...)
+
+  - id: garuda.model-code.fetches-remote-artifacts
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Model code downloads further files or remote code at runtime — those artifacts are not
+      covered by this scan.
+    pattern-either:
+      - pattern: huggingface_hub.hf_hub_download(...)
+      - pattern: hf_hub_download(...)
+      - pattern: snapshot_download(...)
+      - pattern: $X.from_pretrained(..., trust_remote_code=True, ...)
+      - pattern: torch.hub.load(...)
+
+  - id: garuda.model-code.unsafe-deserialization
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Unsafe deserialization (pickle-family) can execute code when loading untrusted data.
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+      - pattern: cPickle.load(...)
+      - pattern: cPickle.loads(...)
+      - pattern: marshal.loads(...)
+      - pattern: dill.load(...)
+      - pattern: dill.loads(...)
+      - pattern: joblib.load(...)
+      - patterns:
+          - pattern: torch.load(...)
+          - pattern-not: torch.load(..., weights_only=True, ...)
+
+  - id: garuda.model-code.native-code-loading
+    languages: [python]
+    severity: WARNING
+    message: Model code loads a native library — native code bypasses Python-level review.
+    pattern-either:
+      - pattern: ctypes.CDLL(...)
+      - pattern: ctypes.cdll.LoadLibrary(...)
+      - pattern: ctypes.PyDLL(...)
+      - pattern: cffi.FFI().dlopen(...)
+      - pattern: torch.ops.load_library(...)
+      - pattern: torch.utils.cpp_extension.load(...)
+      - pattern: torch.utils.cpp_extension.load_inline(...)
+
+  - id: garuda.model-code.dynamic-import
+    languages: [python]
+    severity: WARNING
+    message: Model code imports a module by computed name — what runs is decided at runtime.
+    patterns:
+      - pattern-either:
+          - pattern: __import__($X, ...)
+          - pattern: importlib.import_module($X, ...)
+      - pattern-not: __import__("...", ...)
+      - pattern-not: importlib.import_module("...", ...)
+
+  - id: garuda.model-code.environment-or-credentials-read
+    languages: [python]
+    severity: INFO
+    message: Model code reads environment variables or credential files — check what for.
+    pattern-either:
+      - pattern: os.environ[$K]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
+      - pattern: open("=~/.*\.(ssh|aws|netrc|git-credentials|docker/config\.json).*/", ...)

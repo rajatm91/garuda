@@ -21,6 +21,7 @@ from .stages.static import (  # noqa: F401  — populated into module namespace 
     modelaudit,
     pip_audit,
     provenance,
+    semgrep,
     sha256,
     syft,
 )
@@ -46,6 +47,7 @@ def _static_steps() -> list[tuple[str, ModuleType]]:
         ("09_grype",            m.grype),
         ("10_gitleaks",         m.gitleaks),
         ("11_provenance",       m.provenance),
+        ("12_semgrep",          m.semgrep),
     ]
 
 

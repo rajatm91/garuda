@@ -37,6 +37,17 @@ RUN set -ex; \
 # ── Python app (uv, frozen from uv.lock) ─────────────────────────────────────
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# ── semgrep (step 12, custom model code) + offline rule packs — before COPY src so
+#    code changes don't reinstall it ─────────────────
+# Isolated tool venv so semgrep's dependencies don't touch the app's lockfile.
+ARG SEMGREP_VERSION=1.180.0
+ENV UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin
+RUN uv tool install "semgrep==${SEMGREP_VERSION}" \
+    && mkdir -p /opt/semgrep-rules \
+    && curl -fsSL https://semgrep.dev/c/p/python -o /opt/semgrep-rules/python.yml \
+    && curl -fsSL https://semgrep.dev/c/p/security-audit -o /opt/semgrep-rules/security-audit.yml \
+    && semgrep --version
+
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY src/ src/
@@ -53,7 +64,8 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     GRYPE_DB_AUTO_UPDATE=false \
-    GRYPE_DB_VALIDATE_AGE=false
+    GRYPE_DB_VALIDATE_AGE=false \
+    GARUDA_SEMGREP_CONFIGS=/opt/semgrep-rules/python.yml,/opt/semgrep-rules/security-audit.yml
 
 VOLUME ["/models", "/scans"]
 
