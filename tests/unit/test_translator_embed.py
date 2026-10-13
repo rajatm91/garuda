@@ -22,3 +22,17 @@ def test_embed_malformed_json_returns_empty(tmp_path):
     sarif_path = tmp_path / "broken.sarif"
     sarif_path.write_text("not valid json {{{")
     assert embed_runs(sarif_path) == []
+
+
+def test_missing_result_level_inherits_rule_default(tmp_path):
+    import json as _json
+    p = tmp_path / "x.sarif"
+    p.write_text(_json.dumps({"runs": [{
+        "tool": {"driver": {"name": "Semgrep OSS", "rules": [
+            {"id": "r.err", "defaultConfiguration": {"level": "error"}},
+            {"id": "r.none"}]}},
+        "results": [{"ruleId": "r.err", "ruleIndex": 0}, {"ruleId": "r.none"},
+                    {"ruleId": "r.err", "level": "note"}]}]}))
+    from garuda.report.translators.embed import embed_runs as _embed
+    levels = [r["level"] for r in _embed(p)[0]["results"]]
+    assert levels == ["error", "warning", "note"]  # inherited, SARIF default, explicit kept
