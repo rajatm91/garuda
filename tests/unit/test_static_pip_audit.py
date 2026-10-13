@@ -32,8 +32,8 @@ def test_audits_each_shipped_requirements_file(tmp_path: Path):
     (ctx.weights_dir / "requirements.txt").write_text("torch==2.0\n")
     (ctx.weights_dir / "inference").mkdir()
     (ctx.weights_dir / "inference" / "requirements.txt").write_text("numpy==1.0\n")
-    (ctx.weights_dir / ".cache").mkdir()
-    (ctx.weights_dir / ".cache" / "requirements.txt").write_text("x\n")  # not model content
+    (ctx.weights_dir / ".cache" / "huggingface").mkdir(parents=True)
+    (ctx.weights_dir / ".cache" / "huggingface" / "requirements.txt").write_text("x\n")  # not model content
     doc = {"dependencies": [{"name": "torch", "version": "2.0",
                              "vulns": [{"id": "PYSEC-1", "fix_versions": ["2.1"]}]}]}
     with patch("garuda.stages.static.pip_audit.run_tool", side_effect=_fake(1, doc)) as rt, \

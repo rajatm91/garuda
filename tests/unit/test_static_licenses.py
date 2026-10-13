@@ -13,8 +13,8 @@ def test_inventories_shipped_license_files_and_declared(tmp_path: Path):
     (ctx.weights_dir / "NOTICE.md").write_text("Notice")
     (ctx.weights_dir / "LICENSE-MODEL").write_text("Model license")
     (ctx.weights_dir / "README.md").write_text("not a license")
-    (ctx.weights_dir / ".cache").mkdir()
-    (ctx.weights_dir / ".cache" / "LICENSE").write_text("hf cache, not model")
+    (ctx.weights_dir / ".cache" / "huggingface").mkdir(parents=True)
+    (ctx.weights_dir / ".cache" / "huggingface" / "LICENSE").write_text("hf cache, not model")
     r = step.run(ctx)
     assert r.ran is True
     out = json.loads(r.output_path.read_text())

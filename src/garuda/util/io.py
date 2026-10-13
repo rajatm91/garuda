@@ -34,12 +34,18 @@ def model_files(root: Path, pattern: str) -> list[Path]:
 
     Model content is untrusted: skip symlinks and anything resolving outside root (a
     shipped ``requirements.txt -> ~/.ssh/config`` must not leak host files into the
-    report), and the HF download cache.
+    report), and the HF download cache — only snapshot_download's own top-level
+    ``.cache/huggingface/``; any other ``.cache`` dir is model content and is included so
+    nothing can hide there.
     """
     real_root = root.resolve()
     return sorted(
         p for p in root.rglob(pattern)
-        if ".cache" not in p.relative_to(root).parts
+        if not is_hf_cache(p.relative_to(root))
         and not p.is_symlink() and p.is_file()
         and p.resolve().is_relative_to(real_root)
     )
+
+
+def is_hf_cache(rel: Path) -> bool:
+    return rel.parts[:2] == (".cache", "huggingface")

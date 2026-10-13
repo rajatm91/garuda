@@ -45,7 +45,8 @@ def test_runs_on_shipped_code_with_bundled_and_extra_configs(tmp_path: Path, mon
     configs = [argv[i + 1] for i, a in enumerate(argv) if a == "--config"]
     assert configs == [str(step.BUNDLED_RULES), "/opt/r/python.yml", "/opt/r/audit.yml"]
     assert "--metrics=off" in argv and argv[-2:] == ["./modeling.py", "./sub/audio.py"]
-    assert rt.call_args.kwargs["cwd"] == ctx.weights_dir  # model-relative SARIF URIs
+    assert rt.call_args.kwargs["cwd"] != ctx.weights_dir  # private staging copy
+    assert "--max-target-bytes=0" in argv
 
 
 def test_missing_binary_and_bad_output_are_skips(tmp_path: Path):
@@ -112,3 +113,41 @@ def test_rule_ids_lose_rule_file_path_prefix_and_targets_recorded(tmp_path: Path
         "garuda.model-code.network-access", "python.lang.security.audit.x"]
     assert out["properties"]["scannedFiles"] == ["video_io.py"]
     assert bundled not in json.dumps(out)  # no rule-file path left anywhere
+
+
+def test_staging_ignores_model_semgrepignore_and_default_excludes(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    (ctx.weights_dir / ".semgrepignore").write_text("*.py\n")  # model tries to hide itself
+    (ctx.weights_dir / "tests").mkdir()
+    (ctx.weights_dir / "tests" / "evil.py").write_text("import os\n")  # default-ignored dir
+    (ctx.weights_dir / "sub" / ".cache").mkdir(parents=True)
+    (ctx.weights_dir / "sub" / ".cache" / "hidden.py").write_text("x = 1\n")
+    (ctx.weights_dir / ".cache" / "huggingface").mkdir(parents=True)
+    (ctx.weights_dir / ".cache" / "huggingface" / "hf.py").write_text("x = 1\n")  # HF's own
+    seen: dict = {}
+    def fake(name, argv, *, cwd, **_):
+        stage = Path(cwd)
+        seen["ignore"] = (stage / ".semgrepignore").read_text()
+        seen["files"] = sorted(str(p.relative_to(stage)) for p in stage.rglob("*.py"))
+        Path(argv[argv.index("--output") + 1]).write_text('{"runs": [{"results": []}]}')
+        return MagicMock(exit_code=0)
+    with patch("garuda.stages.static.semgrep.run_tool", side_effect=fake), \
+         patch("shutil.which", return_value="/usr/bin/semgrep"):
+        r = step.run(ctx)
+    assert r.ran is True
+    assert seen["ignore"] == ""  # model's .semgrepignore not used, defaults disabled
+    assert seen["files"] == ["sub/.cache/hidden.py", "tests/evil.py"]
+
+
+def test_symlinked_code_is_reported_not_silently_skipped(tmp_path: Path):
+    ctx = _ctx(tmp_path)
+    outside = tmp_path / "payload.py"
+    outside.write_text("import os; os.system('id')\n")
+    (ctx.weights_dir / "modeling.py").symlink_to(outside)
+    with patch("garuda.stages.static.semgrep.run_tool") as rt, \
+         patch("shutil.which", return_value="/usr/bin/semgrep"):
+        r = step.run(ctx)
+    rt.assert_not_called()  # nothing regular to scan, file never read
+    run = json.loads(r.output_path.read_text())["runs"][0]
+    assert [(x["ruleId"], x["level"]) for x in run["results"]] == [(step.UNSCANNED_RULE, "error")]
+    assert run["properties"]["unscannedFiles"] == ["modeling.py"]

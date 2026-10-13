@@ -4,11 +4,12 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
 from ...context import ScanContext, StageResult
-from ...util.io import load_json, model_files, write_json, write_stub
+from ...util.io import is_hf_cache, load_json, model_files, write_json, write_stub
 from ...util.proc import run_tool
 
 log = logging.getLogger(__name__)
@@ -32,7 +33,8 @@ def run(ctx: ScanContext) -> StageResult:
                            output_path=out_path, skip_reason=reason)
 
     code = model_files(ctx.weights_dir, "*.py")  # no symlinks / nothing outside the model
-    if not code:
+    unscanned = _unscannable_code(ctx.weights_dir)  # still importable → must be reported
+    if not code and not unscanned:
         return skip("model ships no Python code")
     if shutil.which(BIN) is None:
         return skip(f"{BIN} not installed (runs in the garuda Docker image)")
@@ -40,26 +42,69 @@ def run(ctx: ScanContext) -> StageResult:
     configs = [str(BUNDLED_RULES)]
     configs += [c.strip() for c in os.environ.get(CONFIGS_ENV, "").split(",") if c.strip()]
     out_path.unlink(missing_ok=True)  # never mistake a previous run's file for this one
-    argv = [BIN, "scan", "--sarif", "--output", str(out_path), "--metrics=off",
-            "--disable-version-check", "--no-git-ignore", "--quiet"]
-    for c in configs:
-        argv += ["--config", c]
-    # Filenames come from the untrusted repo: "./" prefix so a file named "--config=…" or
-    # "--exclude=…" can never be parsed as a flag. Relative + cwd=weights → model-relative URIs.
     targets = [str(p.relative_to(ctx.weights_dir)) for p in code]
-    argv += [f"./{t}" for t in targets]
-    res = run_tool(BIN, argv, stderr_path=ctx.raw_dir / "12_semgrep.stderr.log",
-                   timeout=TIMEOUT_S, cwd=ctx.weights_dir)
-    sarif = load_json(out_path)
-    if not (isinstance(sarif, dict) and "runs" in sarif):
-        return skip(f"{BIN} exit={res.exit_code}, no SARIF produced (see 12_semgrep.stderr.log)")
-    write_json(out_path, _annotate(sarif, configs, targets))
-    if res.exit_code != 0:  # semgrep exits 0 with findings; non-zero = errors → partial result
+    exit_code = 0
+    if code:
+        exit_code = _scan(ctx, code, targets, configs, out_path)
+        sarif = load_json(out_path)
+        if not (isinstance(sarif, dict) and "runs" in sarif):
+            return skip(f"{BIN} exit={exit_code}, no SARIF produced "
+                        "(see 12_semgrep.stderr.log)")
+    else:
+        sarif = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "Semgrep OSS"}},
+                                                "results": []}]}
+    write_json(out_path, _annotate(sarif, configs, targets, unscanned))
+    if exit_code != 0:  # semgrep exits 0 with findings; non-zero = errors → partial result
         return StageResult(ran=False, duration_s=time.monotonic() - t0, output_path=out_path,
-                           skip_reason=f"{BIN} exit={res.exit_code}: results may be incomplete "
+                           skip_reason=f"{BIN} exit={exit_code}: results may be incomplete "
                                        "(see 12_semgrep.stderr.log)")
     return StageResult(ran=True, duration_s=time.monotonic() - t0,
                        output_path=out_path, skip_reason=None)
+
+
+def _scan(ctx: ScanContext, code: list[Path], targets: list[str], configs: list[str],
+          out_path: Path) -> int:
+    """Run semgrep on a private copy of the code.
+
+    Scanning in place would let the model steer coverage: a shipped ``.semgrepignore`` could
+    exclude its own files, and with no ignore file semgrep's defaults skip tests/, build/,
+    vendor/ … . The staging dir holds only the code plus an empty ``.semgrepignore`` (which
+    disables the defaults), and the size cap is lifted so large obfuscated files are scanned.
+    """
+    with tempfile.TemporaryDirectory(prefix="garuda-semgrep-") as tmp:
+        stage = Path(tmp)
+        (stage / ".semgrepignore").write_text("")
+        for src, rel in zip(code, targets, strict=True):
+            dst = stage / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+        argv = [BIN, "scan", "--sarif", "--output", str(out_path), "--metrics=off",
+                "--disable-version-check", "--no-git-ignore", "--max-target-bytes=0",
+                "--quiet"]
+        for c in configs:
+            argv += ["--config", c]
+        # Untrusted filenames: "./" prefix so "--config=…"/"--exclude=…" is never a flag.
+        argv += [f"./{t}" for t in targets]
+        res = run_tool(BIN, argv, stderr_path=ctx.raw_dir / "12_semgrep.stderr.log",
+                       timeout=TIMEOUT_S, cwd=stage)
+    return res.exit_code
+
+
+def _unscannable_code(root: Path) -> list[str]:
+    """*.py the model ships that we must not read (symlink / resolves outside the model) but
+    that Python could still import."""
+    real_root = root.resolve()
+    out = []
+    for p in root.rglob("*.py"):
+        rel = p.relative_to(root)
+        if is_hf_cache(rel):
+            continue
+        if p.is_symlink() or not p.resolve().is_relative_to(real_root):
+            out.append(str(rel))
+    return sorted(out)
+
+
+UNSCANNED_RULE = "garuda.model-code.unscanned-code"
 
 
 def _rule_prefixes(configs: list[str]) -> list[str]:
@@ -74,7 +119,8 @@ def _rule_prefixes(configs: list[str]) -> list[str]:
     return sorted(out, key=len, reverse=True)
 
 
-def _annotate(sarif: dict, configs: list[str], targets: list[str]) -> dict:
+def _annotate(sarif: dict, configs: list[str], targets: list[str],
+              unscanned: list[str] | None = None) -> dict:
     prefixes = _rule_prefixes(configs)
 
     def clean(text: str) -> str:
@@ -95,4 +141,13 @@ def _annotate(sarif: dict, configs: list[str], targets: list[str]) -> dict:
                 res["ruleId"] = clean(res["ruleId"])
         # evidence that the model's own code (and only that) was evaluated
         run.setdefault("properties", {})["scannedFiles"] = targets
+    if unscanned and sarif.get("runs"):
+        run = sarif["runs"][0]
+        run.setdefault("results", []).extend(
+            {"ruleId": UNSCANNED_RULE, "level": "error",
+             "message": {"text": "Code file is a symlink or resolves outside the model, so it "
+                                 "was not scanned — but Python may still import it."},
+             "locations": [{"physicalLocation": {"artifactLocation": {"uri": rel}}}]}
+            for rel in unscanned)
+        run["properties"]["unscannedFiles"] = unscanned
     return sarif
