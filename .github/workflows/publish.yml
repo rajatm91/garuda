@@ -1,0 +1,86 @@
+name: Publish image
+
+# Weekly rebuild refreshes the baked-in grype CVE DB and semgrep rule packs.
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # Mondays 03:00 UTC
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: ["src/**", "Dockerfile", "pyproject.toml", "uv.lock", ".github/workflows/publish.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: docker.io/${{ vars.DOCKERHUB_USERNAME }}/garuda
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: root
+            moving: latest
+            suffix: ""
+          - target: nonroot
+            moving: nonroot
+            suffix: "-nonroot"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130  # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ matrix.moving }}
+            type=raw,value={{date 'YYYYMMDD'}},suffix=${{ matrix.suffix }}
+            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}
+            type=sha,suffix=${{ matrix.suffix }}
+
+      # Smoke-test before anything is pushed: offline end-to-end scan of the fixture.
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          load: true
+          tags: garuda:test
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          no-cache: ${{ github.event_name == 'schedule' }}   # weekly: fresh DB + rules
+      - name: Scan tiny-model fixture
+        run: |
+          mkdir -p out && chmod 777 out
+          docker run --rm --network none \
+            -v "$PWD/tests/fixtures/tiny-model":/models/tiny:ro \
+            -v "$PWD/out":/scans/out \
+            garuda:test all --local-path /models/tiny --out /scans/out
+          test -s out/reports/scan_results.sarif
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          no-cache: ${{ github.event_name == 'schedule' }}   # else arm64 reuses last week's DB layer
