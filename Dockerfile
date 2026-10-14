@@ -1,8 +1,12 @@
 # syntax=docker/dockerfile:1.7
 # Build with internet access; run in air-gapped environments.
 #
-# Build:
-#   docker build -t garuda:airgap .
+# Build (two flavours from one Dockerfile; they share every layer but the last):
+#   docker build -t garuda:latest .                            # default: runs as root
+#   docker build --target nonroot -t garuda:nonroot .          # runs as uid/gid 1000
+#
+# Non-root on Linux: the bind-mounted output dir must be writable by uid 1000
+# (e.g. `mkdir out && chown 1000:1000 out`, or `chmod 777 out`).
 #
 # Static scan (air-gapped, model pre-copied to host):
 #   docker run --rm \
@@ -11,7 +15,7 @@
 #     garuda:airgap \
 #     all --local-path /models/mymodel --out /scans/run1
 
-FROM python:3.14-slim
+FROM python:3.14-slim AS base
 
 ARG SYFT_VERSION=1.44.0
 ARG GRYPE_VERSION=0.112.0
@@ -57,7 +61,9 @@ RUN uv sync --frozen --no-dev
 # ── cache grype CVE database in image (no update needed at runtime) ───────────
 # Fail the build if the DB can't be fetched: an image without a usable DB makes
 # step 09 silently useless.
-RUN grype db update && grype db status
+# Outside /root so the non-root image can read it too.
+ENV GRYPE_DB_CACHE_DIR=/opt/grype/db
+RUN grype db update && grype db status && chmod -R a+rX /opt/grype
 
 # ── runtime environment ───────────────────────────────────────────────────────
 ENV PATH="/app/.venv/bin:${PATH}" \
@@ -67,7 +73,18 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     GRYPE_DB_VALIDATE_AGE=false \
     GARUDA_SEMGREP_CONFIGS=/opt/semgrep-rules/python.yml,/opt/semgrep-rules/security-audit.yml
 
+# Unprivileged user for the nonroot target; dirs created before VOLUME so ownership sticks.
+RUN groupadd -g 1000 garuda && useradd -u 1000 -g 1000 -m -s /usr/sbin/nologin garuda \
+    && mkdir -p /models /scans && chown garuda:garuda /models /scans
+
 VOLUME ["/models", "/scans"]
 
 ENTRYPOINT ["scan"]
 CMD ["--help"]
+
+# ── non-root image: docker build --target nonroot ─────────────────────────────
+FROM base AS nonroot
+USER garuda:garuda
+
+# ── default image (last stage = what plain `docker build` produces): root ─────
+FROM base AS root
