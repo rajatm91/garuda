@@ -1,9 +1,15 @@
-"""Step 06 — pip-audit of the requirements files the model ships."""
+"""Step 06 — pip-audit of the requirements files the model ships.
+
+When the repo ships no requirements file, record the third-party packages its custom
+code imports instead: undeclared, unpinned dependencies that nothing can CVE-audit.
+"""
 from __future__ import annotations
 
+import ast
 import logging
 import re
 import shutil
+import sys
 import time
 from pathlib import Path
 
@@ -38,6 +44,32 @@ def requirements_files(weights_dir: Path) -> list[Path]:
     return model_files(weights_dir, "requirements*.txt")
 
 
+def third_party_imports(weights_dir: Path) -> dict[str, list[str]]:
+    """{top-level module: [files importing it]} over shipped *.py, minus stdlib and the
+    repo's own modules. Parsed with ast only — model code is never executed. Names are
+    import names, not PyPI names (PIL, not pillow)."""
+    files = [p for p in model_files(weights_dir, "*.py") if p.stat().st_size <= MAX_REQ_BYTES]
+    local = {p.stem for p in files} | {p.parent.name for p in files if p.parent != weights_dir}
+    found: dict[str, set[str]] = {}
+    for f in files:
+        try:
+            tree = ast.parse(f.read_bytes())
+        except (SyntaxError, ValueError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                top = name.split(".")[0]
+                if top not in sys.stdlib_module_names and top not in local and top != "__future__":
+                    found.setdefault(top, set()).add(str(f.relative_to(weights_dir)))
+    return {k: sorted(v) for k, v in sorted(found.items())}
+
+
 def run(ctx: ScanContext) -> StageResult:
     out_path = ctx.raw_dir / OUT
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -50,7 +82,11 @@ def run(ctx: ScanContext) -> StageResult:
 
     reqs = requirements_files(ctx.weights_dir)
     if not reqs:
-        return skip("model ships no requirements*.txt")
+        reason = "model ships no requirements*.txt"
+        write_json(out_path, {"skipped": reason,
+                              "undeclared_imports": third_party_imports(ctx.weights_dir)})
+        return StageResult(ran=False, duration_s=time.monotonic() - t0,
+                           output_path=out_path, skip_reason=reason)
     if shutil.which(BIN) is None:
         return skip(f"{BIN} not installed")
 
