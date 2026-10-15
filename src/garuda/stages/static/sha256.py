@@ -9,10 +9,11 @@ from pathlib import Path
 
 from ...context import ScanContext, StageResult
 from ...util.io import write_json
+from .format_inventory import UNSAFE_EXTS
 
 log = logging.getLogger(__name__)
 OUT = "02_sha256.json"
-EXTS = (".safetensors", ".bin", ".pt", ".pth", ".gguf", ".onnx", ".tflite", ".msgpack", ".h5")
+EXTS = (".safetensors", ".gguf", ".onnx", ".tflite", ".msgpack", ".h5", *UNSAFE_EXTS)
 
 
 def run(ctx: ScanContext) -> StageResult:
