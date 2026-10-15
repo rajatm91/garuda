@@ -26,7 +26,7 @@ curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh 
 curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | sh -s -- -b /usr/local/bin
 ```
 
-Env vars: `HF_TOKEN` (gated HF models), `GRYPE_DB_AUTO_UPDATE` (`false` to skip CVE DB refresh), `SCAN_DEBUG` (`1` = debug logging).
+Env vars: `HF_TOKEN` (gated HF models), `GRYPE_DB_AUTO_UPDATE` (`false` to skip CVE DB refresh), `GARUDA_LOG_FORMAT` (`json` = JSON logs). Use `-v` for debug logging, `-q` for warnings only.
 
 ---
 
