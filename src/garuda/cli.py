@@ -46,7 +46,9 @@ _GLYPHS = {
     "U": ["██╗   ██╗", "██║   ██║", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
     "D": ["██████╗ ", "██╔══██╗", "██║  ██║", "██║  ██║", "██████╔╝", "╚═════╝ "],
 }
-_FIRE = (220, 214, 208, 202, 196, 160)  # xterm-256: gold -> red, one per logo row
+# Basic 16-colour SGR only: the terminal theme remaps these, so they stay legible on light
+# and dark backgrounds. "3" = italic everywhere; terminals without italics ignore it.
+_LOGO, _BORDER, _TAG, _KEY, _VAL = "1;3;36", "2;3", "3;33", "1;3", "3;39"
 
 
 def _use_color() -> bool:
@@ -66,18 +68,18 @@ def _banner(rows: list[tuple[str, str]]) -> None:
         return f"\033[{code}m{text}\033[0m" if color else text
 
     logo = ["".join(_GLYPHS[ch][i] for ch in "GARUDA") for i in range(6)]
-    out = [""] + ["  " + c(f"1;38;5;{_FIRE[i]}", line) for i, line in enumerate(logo)]
+    out = [""] + ["  " + c(_LOGO, line) for line in logo]
     tag = f"v{__version__}  ·  static security scan for open-source LLMs"
     body = [tag, ""] + [f"{k:<9} {v}" for k, v in rows]
     w = max(len(line) for line in body)
-    border = "38;5;208"
+    border = _BORDER
     out.append("  " + c(border, "╭" + "─" * (w + 2) + "╮"))
     for i, line in enumerate(body):
         if i == 0:
-            text = c("3;38;5;214", line.ljust(w))
+            text = c(_TAG, line.ljust(w))
         elif line:
             k, v = line[:9], line[10:]
-            text = c("1", k) + " " + c("97", v.ljust(w - 10))
+            text = c(_KEY, k) + " " + c(_VAL, v.ljust(w - 10))
         else:
             text = " " * w
         out.append("  " + c(border, "│") + " " + text + " " + c(border, "│"))
