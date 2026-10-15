@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -84,12 +85,34 @@ def _banner(rows: list[tuple[str, str]]) -> None:
     print("\n".join(out) + "\n", file=sys.stderr)
 
 
-def _setup_logging(verbosity: int) -> None:
+_RECORD_ATTRS = set(vars(logging.makeLogRecord({}))) | {"message", "asctime"}
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line; `extra={...}` fields are passed through as keys."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        doc = {
+            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        doc.update({k: v for k, v in vars(record).items() if k not in _RECORD_ATTRS})
+        if record.exc_info:
+            doc["exc"] = self.formatException(record.exc_info)
+        return json.dumps(doc, default=str)
+
+
+def _setup_logging(verbosity: int, fmt_name: str = "text") -> None:
     level = {-1: logging.WARNING, 0: logging.INFO}.get(verbosity, logging.DEBUG)
-    fmt = "%(asctime)s %(levelname)-7s " + ("%(name)s: " if level == logging.DEBUG else "")
-    logging.basicConfig(level=level, stream=sys.stderr, force=True,
-                        format=fmt + "%(message)s",
-                        datefmt="%H:%M:%S")
+    handler = logging.StreamHandler(sys.stderr)
+    if fmt_name == "json":
+        handler.setFormatter(JsonFormatter())
+    else:
+        fmt = "%(asctime)s %(levelname)-7s " + ("%(name)s: " if level == logging.DEBUG else "")
+        handler.setFormatter(logging.Formatter(fmt + "%(message)s", datefmt="%H:%M:%S"))
+    logging.basicConfig(level=level, handlers=[handler], force=True)
     # third-party chatter (HTTP requests, download progress internals)
     for noisy in ("httpx", "urllib3", "huggingface_hub", "filelock"):
         logging.getLogger(noisy).setLevel(max(level, logging.WARNING))
@@ -102,6 +125,10 @@ def build_parser() -> argparse.ArgumentParser:
                     default=0, help="Debug logging (tool command lines)")
     vg.add_argument("-q", "--quiet", action="store_const", const=-1, dest="verbosity",
                     help="Warnings and errors only; no banner")
+    common.add_argument("--log-format", choices=("text", "json"),
+                        default=os.environ.get("GARUDA_LOG_FORMAT", "text"),
+                        help="Log line format on stderr (env: GARUDA_LOG_FORMAT). "
+                             "json = one object per line, no banner")
     parser = argparse.ArgumentParser(prog="scan", description="OS LLM scan toolkit")
     parser.add_argument("--version", action="version", version=f"garuda {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -152,10 +179,15 @@ def _run_static(args: argparse.Namespace) -> Path | None:
     )
     scan_dir.mkdir(parents=True, exist_ok=True)
     save_manifest(m)
-    if args.verbosity >= 0:
+    info = {"command": args.cmd, "target": str(local) if local else repo,
+            "revision": None if local else args.revision, "scan_dir": str(scan_dir),
+            "version": __version__}
+    if args.log_format == "json":
+        log.info("scan started", extra=info)
+    elif args.verbosity >= 0:
         _banner([("Command", args.cmd),
-                 ("Target", str(local) if local else repo),
-                 ("Revision", "(local)" if local else args.revision),
+                 ("Target", info["target"]),
+                 ("Revision", info["revision"] or "(local)"),
                  ("Scan dir", str(scan_dir)),
                  ("Started", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"))])
     t0 = time.monotonic()
@@ -172,8 +204,8 @@ def _report(scan_dir: Path, fail_on: str | None) -> int:
     from .runner import run_report
 
     sarif_path, html_path = run_report(scan_dir)
-    log.info("SARIF: %s", sarif_path)
-    log.info("HTML:  %s", html_path)
+    log.info("SARIF: %s", sarif_path, extra={"sarif": str(sarif_path)})
+    log.info("HTML:  %s", html_path, extra={"html": str(html_path)})
     if not fail_on:
         return 0
     # level default "note" matches the HTML verdict in report/html.py
@@ -181,7 +213,8 @@ def _report(scan_dir: Path, fail_on: str | None) -> int:
                for res in run.get("results", [])
                if not is_suppressed(res) and res.get("level", "note") in FAIL_LEVELS[fail_on])
     if hits:
-        print(f"--fail-on {fail_on}: {hits} finding(s) at or above threshold", file=sys.stderr)
+        log.error("--fail-on %s: %d finding(s) at or above threshold", fail_on, hits,
+                  extra={"fail_on": fail_on, "hits": hits})
     return 1 if hits else 0
 
 
@@ -198,7 +231,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    _setup_logging(args.verbosity)
+    _setup_logging(args.verbosity, args.log_format)
     if args.cmd == "static":
         return _cmd_static(args)
     if args.cmd == "all":

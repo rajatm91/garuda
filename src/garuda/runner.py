@@ -68,9 +68,11 @@ def run_static(ctx: ScanContext) -> list[str]:
         ctx.weights_dir.mkdir(exist_ok=True)
         _download_weights(ctx)
         skipped += _run_steps(ctx, steps[1:], len(steps), start=2)
+    dur = time.monotonic() - t0
     log.info("static stage done in %.1fs: %d ran, %d skipped%s",
-             time.monotonic() - t0, len(steps) - len(skipped), len(skipped),
-             f" ({', '.join(skipped)})" if skipped else "")
+             dur, len(steps) - len(skipped), len(skipped),
+             f" ({', '.join(skipped)})" if skipped else "",
+             extra={"event": "stage_done", "duration_s": round(dur, 2), "skipped": skipped})
     return skipped
 
 
@@ -78,12 +80,16 @@ def _run_steps(ctx: ScanContext, steps: list[tuple[str, ModuleType]], total: int
                start: int = 1) -> list[str]:
     skipped = []
     for i, (label, mod) in enumerate(steps, start):
-        log.info("[%2d/%d] %s ...", i, total, label)
+        log.info("[%2d/%d] %s ...", i, total, label,
+                 extra={"event": "step_start", "step": label})
         r = mod.run(ctx)
+        done = {"event": "step_done", "step": label, "duration_s": round(r.duration_s, 2)}
         if r.ran:
-            log.info("[%2d/%d] %s ok (%.1fs)", i, total, label, r.duration_s)
+            log.info("[%2d/%d] %s ok (%.1fs)", i, total, label, r.duration_s,
+                     extra={**done, "status": "ok"})
         else:
-            log.info("[%2d/%d] %s skipped: %s", i, total, label, r.skip_reason)
+            log.info("[%2d/%d] %s skipped: %s", i, total, label, r.skip_reason,
+                     extra={**done, "status": "skipped", "reason": r.skip_reason})
             skipped.append(label)
     return skipped
 
