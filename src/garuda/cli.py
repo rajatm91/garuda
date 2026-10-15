@@ -38,17 +38,16 @@ def _add_static_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--expect-publisher", help="Expected HF org/user that owns the repo")
 
 
-# ANSI Shadow glyphs; rows joined per letter so the logo can't drift out of alignment.
-_GLYPHS = {
-    "G": [" ██████╗ ", "██╔════╝ ", "██║  ███╗", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
-    "A": [" █████╗ ", "██╔══██╗", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"],
-    "R": ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔══██╗", "██║  ██║", "╚═╝  ╚═╝"],
-    "U": ["██╗   ██╗", "██║   ██║", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
-    "D": ["██████╗ ", "██╔══██╗", "██║  ██║", "██║  ██║", "██████╔╝", "╚═════╝ "],
-}
-# Basic 16-colour SGR only: the terminal theme remaps these, so they stay legible on light
-# and dark backgrounds. "3" = italic everywhere; terminals without italics ignore it.
-_LOGO, _BORDER, _TAG, _KEY, _VAL = "1;3;36", "2;3", "3;33", "1;3", "3;39"
+# figlet "slant": outline strokes only (no solid blocks), leans with the italics.
+_LOGO_ART = r"""
+   _________    ____  __  ______  ___
+  / ____/   |  / __ \/ / / / __ \/   |
+ / / __/ /| | / /_/ / / / / / / / /| |
+/ /_/ / ___ |/ _, _/ /_/ / /_/ / ___ |
+\____/_/  |_/_/ |_|\____/_____/_/  |_|
+""".strip("\n").splitlines()
+_MIDNIGHT = "38;2;25;25;112"  # #191970; truecolor only, else theme blue (34)
+_BORDER, _KEY, _VAL = "2;3", "1;3", "3;39"
 
 
 def _use_color() -> bool:
@@ -67,8 +66,8 @@ def _banner(rows: list[tuple[str, str]]) -> None:
     def c(code: str, text: str) -> str:
         return f"\033[{code}m{text}\033[0m" if color else text
 
-    logo = ["".join(_GLYPHS[ch][i] for ch in "GARUDA") for i in range(6)]
-    out = [""] + ["  " + c(_LOGO, line) for line in logo]
+    blue = _MIDNIGHT if os.environ.get("COLORTERM") in ("truecolor", "24bit") else "34"
+    out = [""] + ["  " + c(f"1;3;{blue}", line) for line in _LOGO_ART]
     tag = f"v{__version__}  ·  static security scan for open-source LLMs"
     body = [tag, ""] + [f"{k:<9} {v}" for k, v in rows]
     w = max(len(line) for line in body)
@@ -76,7 +75,7 @@ def _banner(rows: list[tuple[str, str]]) -> None:
     out.append("  " + c(border, "╭" + "─" * (w + 2) + "╮"))
     for i, line in enumerate(body):
         if i == 0:
-            text = c(_TAG, line.ljust(w))
+            text = c(f"3;{blue}", line.ljust(w))
         elif line:
             k, v = line[:9], line[10:]
             text = c(_KEY, k) + " " + c(_VAL, v.ljust(w - 10))
