@@ -54,8 +54,8 @@ def third_party_imports(weights_dir: Path) -> dict[str, list[str]]:
     for f in files:
         try:
             tree = ast.parse(f.read_bytes())
-        except (SyntaxError, ValueError):
-            continue
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            continue  # hostile/odd code must not abort the scan; skip the file
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 names = [a.name for a in node.names]

@@ -112,6 +112,7 @@ def test_no_requirements_records_undeclared_imports(tmp_path: Path):
         "from __future__ import annotations\nimport os, torch.nn\nfrom einops import rearrange\n"
         "from .helper import X\nimport helper\n")
     (ctx.weights_dir / "broken.py").write_text("def (:\n")  # unparseable: ignored, not fatal
+    (ctx.weights_dir / "deep.py").write_text("x=" + "-" * 200000 + "1\n")  # parser MemoryError
     r = step.run(ctx)
     assert r.ran is False
     out = json.loads(r.output_path.read_text())
