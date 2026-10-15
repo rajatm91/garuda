@@ -2,15 +2,20 @@
 from __future__ import annotations
 
 import argparse
+import json
+import logging
+import os
 import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import __version__
 from .context import ScanContext
 from .manifest import Manifest, save_manifest
 from .util.io import load_json
 
+log = logging.getLogger("garuda")
 FAIL_LEVELS = {"error": ("error",), "warning": ("error", "warning")}
 
 
@@ -33,15 +38,108 @@ def _add_static_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--expect-publisher", help="Expected HF org/user that owns the repo")
 
 
+# figlet "slant": outline strokes only (no solid blocks), leans with the italics.
+_LOGO_ART = r"""
+   _________    ____  __  ______  ___
+  / ____/   |  / __ \/ / / / __ \/   |
+ / / __/ /| | / /_/ / / / / / / / /| |
+/ /_/ / ___ |/ _, _/ /_/ / /_/ / ___ |
+\____/_/  |_/_/ |_|\____/_____/_/  |_|
+""".strip("\n").splitlines()
+_MIDNIGHT = "38;2;25;25;112"  # #191970; truecolor only, else theme blue (34)
+_BORDER, _KEY, _VAL = "2;3", "1;3", "3;39"
+
+
+def _use_color() -> bool:
+    return sys.stderr.isatty() and not os.environ.get("NO_COLOR")
+
+
+def _banner(rows: list[tuple[str, str]]) -> None:
+    try:
+        "█╭─".encode(sys.stderr.encoding or "ascii")
+    except (UnicodeEncodeError, LookupError):  # e.g. cp1252 console: never crash a scan on a banner
+        print(f"garuda {__version__}\n" + "\n".join(f"  {k:<9} {v}" for k, v in rows) + "\n",
+              file=sys.stderr)
+        return
+    color = _use_color()
+
+    def c(code: str, text: str) -> str:
+        return f"\033[{code}m{text}\033[0m" if color else text
+
+    blue = _MIDNIGHT if os.environ.get("COLORTERM") in ("truecolor", "24bit") else "34"
+    out = [""] + ["  " + c(f"1;3;{blue}", line) for line in _LOGO_ART]
+    tag = f"v{__version__}  ·  static security scan for open-source LLMs"
+    body = [tag, ""] + [f"{k:<9} {v}" for k, v in rows]
+    w = max(len(line) for line in body)
+    border = _BORDER
+    out.append("  " + c(border, "╭" + "─" * (w + 2) + "╮"))
+    for i, line in enumerate(body):
+        if i == 0:
+            text = c(f"3;{blue}", line.ljust(w))
+        elif line:
+            k, v = line[:9], line[10:]
+            text = c(_KEY, k) + " " + c(_VAL, v.ljust(w - 10))
+        else:
+            text = " " * w
+        out.append("  " + c(border, "│") + " " + text + " " + c(border, "│"))
+    out.append("  " + c(border, "╰" + "─" * (w + 2) + "╯"))
+    print("\n".join(out) + "\n", file=sys.stderr)
+
+
+_RECORD_ATTRS = set(vars(logging.makeLogRecord({}))) | {"message", "asctime"}
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line; `extra={...}` fields are passed through as keys."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        doc = {
+            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        doc.update({k: v for k, v in vars(record).items() if k not in _RECORD_ATTRS})
+        if record.exc_info:
+            doc["exc"] = self.formatException(record.exc_info)
+        return json.dumps(doc, default=str)
+
+
+def _setup_logging(verbosity: int, fmt_name: str = "text") -> None:
+    level = {-1: logging.WARNING, 0: logging.INFO}.get(verbosity, logging.DEBUG)
+    handler = logging.StreamHandler(sys.stderr)
+    if fmt_name == "json":
+        handler.setFormatter(JsonFormatter())
+    else:
+        fmt = "%(asctime)s %(levelname)-7s " + ("%(name)s: " if level == logging.DEBUG else "")
+        handler.setFormatter(logging.Formatter(fmt + "%(message)s", datefmt="%H:%M:%S"))
+    logging.basicConfig(level=level, handlers=[handler], force=True)
+    # third-party chatter (HTTP requests, download progress internals)
+    for noisy in ("httpx", "urllib3", "huggingface_hub", "filelock"):
+        logging.getLogger(noisy).setLevel(max(level, logging.WARNING))
+
+
 def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    vg = common.add_mutually_exclusive_group()
+    vg.add_argument("-v", "--verbose", action="store_const", const=1, dest="verbosity",
+                    default=0, help="Debug logging (tool command lines)")
+    vg.add_argument("-q", "--quiet", action="store_const", const=-1, dest="verbosity",
+                    help="Warnings and errors only; no banner")
+    common.add_argument("--log-format", choices=("text", "json"),
+                        default=os.environ.get("GARUDA_LOG_FORMAT", "text"),
+                        help="Log line format on stderr (env: GARUDA_LOG_FORMAT). "
+                             "json = one object per line, no banner")
     parser = argparse.ArgumentParser(prog="scan", description="OS LLM scan toolkit")
+    parser.add_argument("--version", action="version", version=f"garuda {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    static_p = sub.add_parser("static", help="Static evidence-pack stage")
+    static_p = sub.add_parser("static", help="Static evidence-pack stage", parents=[common])
     _add_static_args(static_p)
-    all_p = sub.add_parser("all", help="static + report")
+    all_p = sub.add_parser("all", help="static + report", parents=[common])
     _add_static_args(all_p)
     _add_fail_on(all_p)
-    report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
+    report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir",
+                              parents=[common])
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
     _add_fail_on(report_p)
     return parser
@@ -82,6 +180,17 @@ def _run_static(args: argparse.Namespace) -> Path | None:
     )
     scan_dir.mkdir(parents=True, exist_ok=True)
     save_manifest(m)
+    info = {"command": args.cmd, "target": str(local) if local else repo,
+            "revision": None if local else args.revision, "scan_dir": str(scan_dir),
+            "version": __version__}
+    if args.log_format == "json":
+        log.info("scan started", extra=info)
+    elif args.verbosity >= 0:
+        _banner([("Command", args.cmd),
+                 ("Target", info["target"]),
+                 ("Revision", info["revision"] or "(local)"),
+                 ("Scan dir", str(scan_dir)),
+                 ("Started", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"))])
     t0 = time.monotonic()
     skipped = run_static(ctx)
     m.resolved_sha = (load_json(ctx.raw_dir / "01_metadata.json") or {}).get("sha")
@@ -95,7 +204,9 @@ def _report(scan_dir: Path, fail_on: str | None) -> int:
     from .report.suppress import is_suppressed
     from .runner import run_report
 
-    sarif_path, _ = run_report(scan_dir)
+    sarif_path, html_path = run_report(scan_dir)
+    log.info("SARIF: %s", sarif_path, extra={"sarif": str(sarif_path)})
+    log.info("HTML:  %s", html_path, extra={"html": str(html_path)})
     if not fail_on:
         return 0
     # level default "note" matches the HTML verdict in report/html.py
@@ -103,7 +214,8 @@ def _report(scan_dir: Path, fail_on: str | None) -> int:
                for res in run.get("results", [])
                if not is_suppressed(res) and res.get("level", "note") in FAIL_LEVELS[fail_on])
     if hits:
-        print(f"--fail-on {fail_on}: {hits} finding(s) at or above threshold", file=sys.stderr)
+        log.error("--fail-on %s: %d finding(s) at or above threshold", fail_on, hits,
+                  extra={"fail_on": fail_on, "hits": hits})
     return 1 if hits else 0
 
 
@@ -120,6 +232,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _setup_logging(args.verbosity, args.log_format)
     if args.cmd == "static":
         return _cmd_static(args)
     if args.cmd == "all":

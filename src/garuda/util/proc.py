@@ -27,7 +27,7 @@ def run_tool(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> RunResult:
-    log.info("run %s: %s", name, " ".join(argv))
+    log.debug("run %s: %s", name, " ".join(argv))
     t0 = time.monotonic()
 
     with ExitStack() as stack:
@@ -45,5 +45,7 @@ def run_tool(
             exit_code = 127
 
     dur = time.monotonic() - t0
-    log.info("run %s: exit=%d duration=%.2fs", name, exit_code, dur)
+    log.log(logging.WARNING if exit_code in (124, 127) else logging.DEBUG,
+            "%s: exit=%d (%.1fs)%s", name, exit_code, dur,
+            {124: " timed out", 127: " not found"}.get(exit_code, ""))
     return RunResult(exit_code=exit_code, duration_s=dur)

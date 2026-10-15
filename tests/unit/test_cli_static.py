@@ -27,3 +27,24 @@ def test_relative_out_and_local_path_become_absolute(tmp_path, monkeypatch):
     ctx = rs.call_args.args[0]
     assert ctx.scan_dir == tmp_path.resolve() / "out"
     assert ctx.local_path == tmp_path.resolve() / "model"
+
+
+def test_banner_shown_unless_quiet(tmp_path, capsys):
+    (tmp_path / "model").mkdir()
+    with patch("garuda.runner.run_static", return_value=[]):
+        main(["static", "--local-path", str(tmp_path / "model"), "--out", str(tmp_path / "a")])
+        assert "Scan dir" in capsys.readouterr().err
+        main(["static", "-q", "--local-path", str(tmp_path / "model"), "--out", str(tmp_path / "b")])
+        assert "garuda" not in capsys.readouterr().err
+
+
+def test_json_log_format_emits_structured_lines(tmp_path, capsys):
+    (tmp_path / "model").mkdir()
+    with patch("garuda.runner.run_static", return_value=[]):
+        main(["static", "--log-format", "json", "--local-path", str(tmp_path / "model"),
+              "--out", str(tmp_path / "o")])
+    lines = [json.loads(line) for line in capsys.readouterr().err.splitlines() if line]
+    assert lines and all({"ts", "level", "logger", "msg"} <= set(d) for d in lines)
+    start = next(d for d in lines if d["msg"] == "scan started")
+    assert start["command"] == "static" and start["revision"] is None
+    assert "GARUDA" not in str(lines) and "╭" not in str(lines)  # no banner in json mode

@@ -1,149 +1,184 @@
-# OS LLM Security Scan Toolkit
+<div align="center">
 
-Static security scan toolkit for open-source Hugging Face LLMs (Llama, Gemma, Qwen, etc.).
-Produces SARIF 2.1.0 + self-contained HTML evidence packs for InfoSec + MRMC review.
-
-## 1. Install
-
-```bash
-uv add garuda
+```
+   _________    ____  __  ______  ___
+  / ____/   |  / __ \/ / / / __ \/   |
+ / / __/ /| | / /_/ / / / / / / / /| |
+/ /_/ / ___ |/ _, _/ /_/ / /_/ / ___ |
+\____/_/  |_/_/ |_|\____/_____/_/  |_|
 ```
 
-External binaries (optional, soft-skip if absent):
+**Static security scanning for open-source LLMs.**
+Inspect a Hugging Face model before it gets anywhere near production — and hand reviewers evidence, not opinions.
+
+[![CI](https://github.com/rajatm91/garuda/actions/workflows/ci.yml/badge.svg)](https://github.com/rajatm91/garuda/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.14%2B-blue)
+![SARIF](https://img.shields.io/badge/output-SARIF%202.1.0-orange)
+![Docker](https://img.shields.io/badge/docker-ready-2496ED)
+
+[Quick start](#quick-start) · [What it checks](#what-it-checks) · [Usage](#usage) · [CI gating](#ci-gating) · [Usage guide](USAGE.md)
+
+</div>
+
+---
+
+## Why Garuda?
+
+Downloading an open-weight model means running someone else's artifacts: pickle files that can execute code on load, custom `*.py` pulled in by `trust_remote_code`, bundled dependencies, licenses with strings attached. Garuda runs a pinned, reproducible battery of static checks over a model repo and produces an **evidence pack** — a SARIF log for your security tooling and a self-contained HTML report you can attach to a review ticket.
+
+- **One command** — `scan all <repo>` fetches, scans and reports.
+- **Pinned and reproducible** — branches resolve to a commit SHA; weights are downloaded by SHA; tool versions are recorded.
+- **Defense in depth** — 13 steps across malicious payloads, unsafe formats, CVEs, secrets, provenance and shipped code.
+- **Soft-fail by design** — a missing optional tool yields a recorded skip, not a broken pipeline.
+- **Standard output** — native SARIF 2.1.0 for GitHub code scanning, DefectDojo, Azure DevOps; no-CDN HTML for humans.
+- **CI-ready** — `--fail-on error|warning` exit codes and JSON logs.
+
+## Quick start
+
+**Docker (recommended)** — bundles every scanner (syft, grype + cached CVE DB, gitleaks, semgrep, modelaudit):
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh  | sh -s -- -b /usr/local/bin
-curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | sh -s -- -b /usr/local/bin
+docker build -t garuda .
+
+# Hugging Face model
+docker run --rm -e HF_TOKEN -v "$PWD/scans":/scans \
+  garuda all meta-llama/Llama-3.1-8B-Instruct --out /scans/llama
+
+# Model already on disk
+docker run --rm -v /data/models:/models -v "$PWD/scans":/scans \
+  garuda all --local-path /models/mymodel --out /scans/mymodel
 ```
 
-## 2. Quick start
+**From source** (Python 3.14+, [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-# Static scan against HF Hub
-scan static meta-llama/Llama-3.1-8B-Instruct --revision main
-
-# Static scan against on-disk model
-scan static --local-path /data/models/Llama-3.1-8B-Instruct
-
-# Static scan + report in one go
-scan all meta-llama/Llama-3.1-8B-Instruct
-
-# Pin publisher and signer (provenance step 11)
-scan all meta-llama/Llama-3.1-8B-Instruct --expect-publisher meta-llama \
-  --signer-identity release@example.com --signer-issuer https://accounts.google.com
-
-# Regenerate reports only
-scan report scan_meta-llama_Llama-3.1-8B-Instruct_<ts>/
+git clone https://github.com/rajatm91/garuda.git && cd garuda
+uv sync --all-extras
+uv run scan all Qwen/Qwen3-8B
 ```
 
-## 3. Environment variables
+Then open `scan_<repo>_<UTC>/reports/scan_report.html`.
 
-| Var | When | Notes |
-|---|---|---|
-| `HF_TOKEN` | Static + HF source | Required for gated models (Llama, Gemma, some Qwen) |
-| `GRYPE_DB_AUTO_UPDATE` | Static + offline | Set `false` to skip CVE DB refresh |
-| `SCAN_DEBUG` | Any | Set `1` to enable DEBUG logs |
-| `GARUDA_IGNORE_FILES` | Report | Comma-separated file names whose findings are suppressed (SARIF `suppressions`, excluded from verdict). Default `README.md`; set empty to disable |
+> Full scans belong in the Docker image: semgrep ships only there, and modelaudit can't analyse weight shards on macOS.
 
-## 4. Output structure
+## How it works
 
-Every run creates `scan_<repo>_<UTC>/`:
+```mermaid
+flowchart LR
+    A[HF repo or local dir] --> B[01 metadata<br/>resolve SHA]
+    B --> C[download weights<br/>pinned by SHA]
+    C --> D[02–13 static checks]
+    D --> E[(raw/NN_*.json)]
+    E --> F[scan report]
+    F --> G[scan_results.sarif]
+    F --> H[scan_report.html]
+```
 
-- `manifest.json` — pipeline state, tool versions, skipped steps.
-- `raw/01_metadata.json` through `raw/13_hf_security.json` — native + translated outputs.
-- `reports/scan_results.sarif` — single aggregated SARIF 2.1.0 log (submit to GHAS, DefectDojo, etc).
-- `reports/scan_report.html` — self-contained HTML for ticket attachment.
+`scan static` writes raw tool output; `scan report` translates it into one SARIF log and one HTML report. `scan all` does both.
 
-## 5. Static steps
+## What it checks
 
-| # | Output | Tool | Purpose |
+| # | Check | Tool | Looks for |
 |---|---|---|---|
-| 01 | `01_metadata.json` | huggingface_hub | HF model info, revision → commit SHA (or local `config.json`) |
-| 02 | `02_sha256.json` | stdlib | SHA-256 of every weight file |
-| 03 | `03_format_inventory.json` | stdlib | safetensors vs unsafe (pickle) formats |
-| 04 | `04_modelaudit.json` | modelaudit | Malicious-payload scan across model formats |
-| 05 | `05_picklescan.json` | picklescan | Second-opinion scan of pickle files |
-| 06 | `06_pip_audit.json` | pip-audit | CVEs in `requirements*.txt` the model ships (skipped if none) |
-| 07 | `07_licenses.json` | stdlib | LICENSE / NOTICE / COPYING files the model ships + model-card declared license |
-| 08 | `08_sbom.{cdx,spdx}.json` | syft | SBOM |
-| 09 | `09_grype.{json,sarif}` | grype | CVEs from SBOM |
-| 10 | `10_gitleaks.{json,sarif}` | gitleaks | Secrets |
-| 11 | `11_provenance.json` | huggingface_hub, model-signing | Local hashes vs HF-published LFS hashes; `model.sig` signature; publisher identity |
-| 12 | `12_semgrep.sarif` | semgrep (Docker image) | Custom Python code the model ships (`trust_remote_code`): process exec, eval/exec, network, remote fetches, unsafe deserialization, native loading — bundled garuda rules + `p/python` + `p/security-audit` |
-| 13 | `13_hf_security.json` | Hugging Face API | HF's own antivirus + pickle-import scan per file at the pinned commit (HF skips AV on files over ~2 GB) |
+| 01 | Metadata | huggingface_hub | Model info; `--revision` → commit SHA |
+| 02 | Hashes | stdlib | SHA-256 of every weight file |
+| 03 | Format inventory | stdlib | Pickle-capable formats (`.bin` `.pt` `.ckpt` `.pkl` `.npy` `.keras` …) vs safetensors |
+| 04 | Malicious payloads | modelaudit | Code-execution payloads across model formats |
+| 05 | Pickle scan | picklescan | Second opinion on pickle imports |
+| 06 | Python deps | pip-audit | CVEs in shipped `requirements*.txt` |
+| 07 | Licenses | stdlib | LICENSE / NOTICE files + model-card license |
+| 08 | SBOM | syft | CycloneDX + SPDX bill of materials |
+| 09 | Vulnerabilities | grype | CVEs from the SBOM |
+| 10 | Secrets | gitleaks | Leaked keys and tokens |
+| 11 | Provenance | huggingface_hub, model-signing | Local vs HF-published hashes, `model.sig` (Sigstore), publisher identity |
+| 12 | Shipped code | semgrep | `trust_remote_code` Python: exec/eval, subprocess, network, unsafe deserialization, native loading |
+| 13 | HF security scan | Hugging Face API | HF's own AV + pickle-import verdicts at the pinned commit |
 
-Missing tool → `{"skipped": ...}` stub; step listed in `manifest.json` `stages.static.skipped_steps`.
-
-Step 11 provenance flags (all optional):
-
-- `--expect-publisher ORG` — error if the repo owner differs. Without it, unverified orgs / user accounts are warnings.
-- `--signer-identity ID --signer-issuer URL` — verify `model.sig` (OpenSSF model-signing / Sigstore) against this signer; when pinned, a failed or impossible (e.g. offline) verification and any file the signature does not cover are errors. Without them a present signature is reported as *unpinned* (warning) with the signer identity found in it.
-
-## 6. NOT covered
-
-- Behavioural testing (prompt injection, jailbreak, PII leakage, bias, toxicity, hallucination) — removed; static scan only for now.
-- CBRN-info / weapon capability probes (NIST #1) — need legally-cleared corpora; defer to v2.
-- IP / training-data extraction beyond standard PII (NIST #10) — defer to v2.
-- Application-layer OWASP items: LLM05 (improper output handling), LLM06 (excessive agency), LLM08 (vector & embedding), LLM10 (unbounded consumption) — these are application concerns, not model properties.
-- Latency / throughput / capacity testing.
-- Entitlement bypass for RAG.
-
-## 7. SARIF ingestion
+## Usage
 
 ```bash
-gh api -X POST /repos/{owner}/{repo}/code-scanning/sarifs \
-  -F commit_sha=$(git rev-parse HEAD) \
-  -F ref=refs/heads/main \
-  -F sarif=@reports/scan_results.sarif
+scan static <repo> | --local-path <dir>   # run checks → raw/
+scan report <scan_dir>                    # raw/ → SARIF + HTML
+scan all    <repo> | --local-path <dir>   # both
 ```
 
-For DefectDojo / Azure DevOps: see [Microsoft SARIF integration docs](https://docs.microsoft.com/en-us/azure/devops/repos/security/github-advanced-security-code-scanning).
+| Option | Applies to | Description |
+|---|---|---|
+| `--revision REV` | static, all | Branch/tag/SHA to scan (default `main`) |
+| `--local-path DIR` / `--repo-id NAME` | static, all | Scan an on-disk model; optional canonical name |
+| `--out DIR` | static, all | Output directory (default `scan_<repo>_<UTC>`) |
+| `--expect-publisher ORG` | static, all | Error if the repo owner differs |
+| `--signer-identity ID --signer-issuer URL` | static, all | Verify `model.sig` against a pinned Sigstore signer |
+| `--fail-on {error,warning}` | report, all | Exit `1` if unsuppressed findings at or above that level exist |
+| `-v` / `-q` | all commands | Debug logging / warnings only (no banner) |
+| `--log-format {text,json}` | all commands | JSON = one object per line on stderr |
 
-## 8. Reproducibility
+### Environment
 
-Every scan records:
-
-- Resolved HF commit SHA (or hash-list digest for `--local-path` mode)
-- Tool versions (in `manifest.json.tool_versions`)
-- UTC timestamps everywhere
-
-A second engineer re-running against the same SHA will get identical results (modulo CVE DB updates).
-
-## 9. Model-specific notes
-
-### Llama (Meta)
-
-- License: **Llama Community License Agreement** — not OSI-approved open source.
-- Has an Acceptable Use Policy (prohibits military, surveillance, CSAM, etc.).
-- MAU clause: if your product exceeds 700M MAU at the time of release, you must
-  request a separate license from Meta.
-- Indemnity: none.
-
-### Gemma (Google)
-
-- License: **Gemma Terms of Use** + prohibited use policy.
-- Allows commercial use.
-- Distribution of derivatives must pass through the Gemma terms.
-- Indemnity: none.
-
-### Qwen (Alibaba)
-
-- Varies by variant. Many Qwen2.5+ checkpoints are **Apache 2.0** (standard OSI).
-- Some larger / older variants ship under the **Tongyi Qianwen License** with
-  restrictions similar to Llama's (MAU clause, AUP).
-- Always check the specific variant's `LICENSE` file.
-
-**Action:** for each model, get the actual `LICENSE` file off the HF repo,
-attach it to the Legal review request, do not summarise it.
-
-## 10. Troubleshooting
-
-| Symptom | Fix |
+| Variable | Purpose |
 |---|---|
-| `modelaudit not installed` | Comes with `garuda` core — verify `uv pip list \| grep modelaudit` |
-| `404 from HF` | Set `HF_TOKEN` and accept license on model page |
+| `HF_TOKEN` | Gated models (Llama, Gemma, some Qwen) |
+| `GARUDA_LOG_FORMAT` | `json` to default to JSON logs |
+| `GARUDA_IGNORE_FILES` | Comma-separated file names whose findings are suppressed (default `README.md`; empty disables) |
+| `GARUDA_SEMGREP_CONFIGS` | Extra semgrep rule packs |
+| `GRYPE_DB_AUTO_UPDATE` | `false` to skip the CVE DB refresh (offline) |
+| `NO_COLOR` | Disable banner colour |
 
-## 11. Architecture
+## Output
 
-See `docs/superpowers/specs/2026-05-20-modelaudit-behavioural-checks-design.md` for the original design. Dynamic stage described there has been removed; static stage + numbered `raw/NN_*.json` filename contract still apply.
+```
+scan_<repo>_<UTC>/
+├── manifest.json              # pipeline state, tool versions, skipped steps
+├── raw/                       # 01_metadata.json … 13_hf_security.json (native tool output)
+└── reports/
+    ├── scan_results.sarif     # one SARIF 2.1.0 log, one run per tool
+    └── scan_report.html       # self-contained, attach to a ticket
+```
+
+The HTML report opens with a verdict — **FAIL** (any error), **REVIEW** (warnings), **PASS** — followed by findings grouped by tool.
+
+## CI gating
+
+```yaml
+- name: Scan model
+  env: { HF_TOKEN: "${{ secrets.HF_TOKEN }}" }
+  run: uv run scan all "${{ inputs.model }}" --fail-on error --log-format json
+
+- name: Upload SARIF
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with: { sarif_file: "scan_*/reports/scan_results.sarif" }
+```
+
+Exit codes: `0` clean (or no `--fail-on`), `1` findings at/above threshold, `2` invalid invocation or static stage failure. A full workflow is in [USAGE.md](USAGE.md#6-ci-github-actions).
+
+## Scope
+
+Garuda inspects **artifacts**, not behaviour. Not covered: prompt injection, jailbreaks, PII leakage, bias/toxicity, hallucination, CBRN capability probes, training-data extraction, application-layer OWASP LLM risks (output handling, excessive agency, vector stores, unbounded consumption), and performance testing.
+
+<details>
+<summary><b>License notes for common model families</b></summary>
+
+- **Llama (Meta)** — Llama Community License (not OSI). Acceptable Use Policy; separate license needed above 700M MAU; no indemnity.
+- **Gemma (Google)** — Gemma Terms of Use + prohibited-use policy. Commercial use allowed; derivatives inherit the terms.
+- **Qwen (Alibaba)** — varies: many Qwen2.5+ checkpoints are Apache 2.0, some ship under the Tongyi Qianwen License (MAU clause, AUP).
+
+Always attach the model's actual `LICENSE` file to legal review — don't summarise it.
+
+</details>
+
+## Documentation
+
+- [USAGE.md](USAGE.md) — recipes: offline scans, reading outputs, CI, verifying deployed weights, troubleshooting.
+- [`docs/superpowers/specs/`](docs/superpowers/specs/) — design spec (static-stage invariants; dynamic-stage sections are obsolete).
+
+## Development
+
+```bash
+uv sync --all-extras
+uv run pytest                 # unit tests
+uv run pytest -m integration  # integration tests
+uv run ruff check . && uv run pyright
+```
+
+Conventions: numbered `raw/NN_<tool>.*` filenames are a load-bearing contract; every step soft-fails to a `{"skipped": ...}` stub; the HTML report stays dependency-free. See [CLAUDE.md](CLAUDE.md) for architecture notes.
