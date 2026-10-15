@@ -11,6 +11,13 @@ from .context import ScanContext
 from .manifest import Manifest, save_manifest
 from .util.io import load_json
 
+FAIL_LEVELS = {"error": ("error",), "warning": ("error", "warning")}
+
+
+def _add_fail_on(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--fail-on", choices=sorted(FAIL_LEVELS),
+                   help="Exit 1 if unsuppressed findings at or above this level exist")
+
 
 def _add_static_args(p: argparse.ArgumentParser) -> None:
     src_g = p.add_mutually_exclusive_group(required=True)
@@ -33,8 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_static_args(static_p)
     all_p = sub.add_parser("all", help="static + report")
     _add_static_args(all_p)
+    _add_fail_on(all_p)
     report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
+    _add_fail_on(report_p)
     return parser
 
 
@@ -82,18 +91,31 @@ def _run_static(args: argparse.Namespace) -> Path | None:
     return scan_dir
 
 
+def _report(scan_dir: Path, fail_on: str | None) -> int:
+    from .report.suppress import is_suppressed
+    from .runner import run_report
+
+    sarif_path, _ = run_report(scan_dir)
+    if not fail_on:
+        return 0
+    # level default "note" matches the HTML verdict in report/html.py
+    hits = sum(1 for run in (load_json(sarif_path) or {}).get("runs", [])
+               for res in run.get("results", [])
+               if not is_suppressed(res) and res.get("level", "note") in FAIL_LEVELS[fail_on])
+    if hits:
+        print(f"--fail-on {fail_on}: {hits} finding(s) at or above threshold", file=sys.stderr)
+    return 1 if hits else 0
+
+
 def _cmd_static(args: argparse.Namespace) -> int:
     return 0 if _run_static(args) else 2
 
 
 def _cmd_all(args: argparse.Namespace) -> int:
-    from .runner import run_report
-
     scan_dir = _run_static(args)
     if scan_dir is None:
         return 2
-    run_report(scan_dir)
-    return 0
+    return _report(scan_dir, args.fail_on)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -103,9 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "all":
         return _cmd_all(args)
     if args.cmd == "report":
-        from .runner import run_report
-        run_report(args.scan_dir)
-        return 0
+        return _report(args.scan_dir, args.fail_on)
     print(f"cmd={args.cmd}", file=sys.stderr)
     return 0
 
