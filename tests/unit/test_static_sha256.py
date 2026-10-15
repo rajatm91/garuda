@@ -25,3 +25,11 @@ def test_empty_weights_dir_writes_empty_list(tmp_path: Path):
     ctx = _ctx(tmp_path); ctx.weights_dir.mkdir(); ctx.raw_dir.mkdir()
     r = step.run(ctx)
     assert json.loads(r.output_path.read_text()) == {"root": str(ctx.weights_dir), "files": []}
+
+
+def test_hashes_pickle_capable_extensions(tmp_path: Path):
+    ctx = _ctx(tmp_path); ctx.weights_dir.mkdir(); ctx.raw_dir.mkdir()
+    for n in ("model.ckpt", "a.pkl", "b.pickle", "c.joblib", "d.npy", "e.npz", "f.keras"):
+        (ctx.weights_dir / n).write_bytes(b"x")
+    out = json.loads(step.run(ctx).output_path.read_text())
+    assert len(out["files"]) == 7

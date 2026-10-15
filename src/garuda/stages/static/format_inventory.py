@@ -9,7 +9,10 @@ from ...util.io import load_json, write_json, write_stub
 
 log = logging.getLogger(__name__)
 OUT = "03_format_inventory.json"
-UNSAFE_EXTS = (".bin", ".pt", ".pth")
+# Pickle-capable (or code-executing) formats: torch/pickle/joblib, numpy with
+# allow_pickle, Keras archives (Lambda layers).
+UNSAFE_EXTS = (".bin", ".pt", ".pth", ".ckpt", ".pkl", ".pickle", ".joblib",
+               ".npy", ".npz", ".keras")
 
 
 def run(ctx: ScanContext) -> StageResult:
