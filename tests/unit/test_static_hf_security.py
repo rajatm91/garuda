@@ -81,3 +81,20 @@ def test_translator_levels(tmp_path: Path):
         ("HFSEC005", "note", None),
     ]
     assert "os.system" in run["results"][0]["message"]["text"]
+
+
+def test_pending_rescan_is_not_a_verdict(tmp_path: Path):
+    # Real HF response for a shard queued for re-scan: safe=false but no verdict yet.
+    queued = {"safe": False, "status": "queued", "av_scan": {"status": "unscanned"},
+              "pickle_import_scan": {"status": "unscanned"}}
+    weird = {**queued, "status": "something-new"}  # unknown status: still fail closed
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "13_hf_security.json").write_text(json.dumps({
+        "revision": "abc", "repo_status": {"scansDone": True, "filesWithIssues": []},
+        "files": [{"path": "a.safetensors", "security": queued},
+                  {"path": "b.safetensors", "security": weird}]}))
+    run = build_hf_security_run(tmp_path)
+    assert run is not None
+    by_path = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]: r["ruleId"]
+               for r in run["results"] if r.get("locations")}
+    assert by_path == {"a.safetensors": "HFSEC003", "b.safetensors": "HFSEC001"}

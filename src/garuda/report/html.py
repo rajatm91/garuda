@@ -354,6 +354,22 @@ def _notes_panel(notes: list[dict]) -> str:
             f'</h3><ul>{items}</ul></div>')
 
 
+def _dependency_gap(scan_dir: Path) -> str:
+    """Explain an empty SBOM / skipped pip-audit, so '0 findings' doesn't read as 'not run'."""
+    sbom = load_json(scan_dir / "raw" / "08_sbom.cdx.json")
+    pa = load_json(scan_dir / "raw" / "06_pip_audit.json")
+    if not isinstance(sbom, dict) or "bomFormat" not in sbom or sbom.get("components"):
+        return ""
+    imports = (pa.get("undeclared_imports") if isinstance(pa, dict) else None) or {}
+    extra = (f" Its code imports {len(imports)} third-party package(s) without declaring them: "
+             f"{', '.join(f'<code>{_esc(m)}</code>' for m in imports)} — see pip-audit below."
+             if imports else "")
+    return (f'<div class="callout warn">{_icon("alert")}<div><strong>No dependency manifest '
+            "shipped.</strong> The repo has no requirements.txt / pyproject.toml / setup.py / "
+            "lockfile, so syft catalogued 0 packages and grype and pip-audit had nothing to "
+            f"check for CVEs.{extra}</div></div>")
+
+
 def _fact(icon: str, key: str, value: str, detail: str = "", wide: bool = False) -> str:
     return (f'<div class="fact{" wide" if wide else ""}"><div class="k">{_icon(icon)}{key}</div>'
             f'<div class="v">{value}</div>{f"<div class=d>{detail}</div>" if detail else ""}</div>')
@@ -545,6 +561,7 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
         '<section id="findings"><h2><span class="num">4</span>Findings by Tool</h2>'
         '<p class="sub">os-llm-review, modelaudit, picklescan, pip-audit, os-llm-model-provenance, '
         "grype, gitleaks — errors and warnings first; informational results are collapsed.</p>"
+        + _dependency_gap(scan_dir)
     )
     for run in sarif.get("runs", []):
         driver = run.get("tool", {}).get("driver", {})

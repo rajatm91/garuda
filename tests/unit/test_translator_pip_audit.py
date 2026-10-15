@@ -18,3 +18,14 @@ def test_returns_none_on_skip_stub(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "raw" / "06_pip_audit.json").write_text('{"skipped":"x"}')
     assert build_pip_audit_run(tmp_path) is None
+
+
+def test_undeclared_imports_become_notes(tmp_path: Path):
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "06_pip_audit.json").write_text(
+        '{"skipped":"x","undeclared_imports":{"torch":["a.py","b.py"]}}')
+    run = build_pip_audit_run(tmp_path)
+    assert run is not None
+    [res] = run["results"]
+    assert res["ruleId"] == "UNDECLARED-DEPENDENCY" and res["level"] == "note"
+    assert len(res["locations"]) == 2

@@ -53,3 +53,13 @@ def test_modelaudit_warnings_and_notes_collapsed_errors_open(tmp_path):
     assert ma.index("bad pickle") < ma.index("<details>")  # error visible
     assert "Show 1 warning</summary>" in ma and "Show 1 informational" in ma
     assert "Show 1 warning</summary>" not in gr  # other tools keep warnings open
+
+
+def test_empty_sbom_explains_missing_manifest(tmp_path):
+    scan = _scan(tmp_path)
+    assert "No dependency manifest" not in build_html(scan, sarif={"runs": []})  # no SBOM: silent
+    (scan / "raw" / "08_sbom.cdx.json").write_text('{"bomFormat":"CycloneDX","components":[]}')
+    (scan / "raw" / "06_pip_audit.json").write_text(
+        '{"skipped":"x","undeclared_imports":{"torch":["m.py"]}}')
+    html = build_html(scan, sarif={"runs": []})
+    assert "No dependency manifest" in html and "<code>torch</code>" in html
