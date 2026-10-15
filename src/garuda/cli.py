@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from datetime import UTC, datetime
@@ -36,19 +37,51 @@ def _add_static_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--expect-publisher", help="Expected HF org/user that owns the repo")
 
 
-BANNER = r"""
-   ____    _    ____  _   _ ____    _
-  / ___|  / \  |  _ \| | | |  _ \  / \
- | |  _  / _ \ | |_) | | | | | | |/ _ \
- | |_| |/ ___ \|  _ <| |_| | |_| / ___ \
-  \____/_/   \_\_| \_\\___/|____/_/   \_\
-"""
+# ANSI Shadow glyphs; rows joined per letter so the logo can't drift out of alignment.
+_GLYPHS = {
+    "G": [" ██████╗ ", "██╔════╝ ", "██║  ███╗", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
+    "A": [" █████╗ ", "██╔══██╗", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"],
+    "R": ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔══██╗", "██║  ██║", "╚═╝  ╚═╝"],
+    "U": ["██╗   ██╗", "██║   ██║", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
+    "D": ["██████╗ ", "██╔══██╗", "██║  ██║", "██║  ██║", "██████╔╝", "╚═════╝ "],
+}
+_FIRE = (220, 214, 208, 202, 196, 160)  # xterm-256: gold -> red, one per logo row
+
+
+def _use_color() -> bool:
+    return sys.stderr.isatty() and not os.environ.get("NO_COLOR")
 
 
 def _banner(rows: list[tuple[str, str]]) -> None:
-    lines = [BANNER.rstrip("\n"), f"  garuda {__version__} - static security scan for open-source LLMs", ""]
-    lines += [f"  {k:<10} {v}" for k, v in rows]
-    print("\n".join(lines) + "\n", file=sys.stderr)
+    try:
+        "█╭─".encode(sys.stderr.encoding or "ascii")
+    except (UnicodeEncodeError, LookupError):  # e.g. cp1252 console: never crash a scan on a banner
+        print(f"garuda {__version__}\n" + "\n".join(f"  {k:<9} {v}" for k, v in rows) + "\n",
+              file=sys.stderr)
+        return
+    color = _use_color()
+
+    def c(code: str, text: str) -> str:
+        return f"\033[{code}m{text}\033[0m" if color else text
+
+    logo = ["".join(_GLYPHS[ch][i] for ch in "GARUDA") for i in range(6)]
+    out = [""] + ["  " + c(f"1;38;5;{_FIRE[i]}", line) for i, line in enumerate(logo)]
+    tag = f"v{__version__}  ·  static security scan for open-source LLMs"
+    body = [tag, ""] + [f"{k:<9} {v}" for k, v in rows]
+    w = max(len(line) for line in body)
+    border = "38;5;208"
+    out.append("  " + c(border, "╭" + "─" * (w + 2) + "╮"))
+    for i, line in enumerate(body):
+        if i == 0:
+            text = c("3;38;5;214", line.ljust(w))
+        elif line:
+            k, v = line[:9], line[10:]
+            text = c("1", k) + " " + c("97", v.ljust(w - 10))
+        else:
+            text = " " * w
+        out.append("  " + c(border, "│") + " " + text + " " + c(border, "│"))
+    out.append("  " + c(border, "╰" + "─" * (w + 2) + "╯"))
+    print("\n".join(out) + "\n", file=sys.stderr)
 
 
 def _setup_logging(verbosity: int) -> None:
