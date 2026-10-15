@@ -17,6 +17,9 @@ RULES = {
 _BAD = {"unsafe", "infected", "malicious", "dangerous"}
 _SUSPECT = {"caution", "suspicious", "warning"}
 _DONE = {"safe", "innocuous"} | _BAD | _SUSPECT
+# HF sets safe=false while a (re)scan is pending — that is "no verdict yet", not "unsafe".
+# Any other status with safe=false stays flagged (fail closed on statuses we don't know).
+_PENDING = {"queued", "pending", "scanning", "in_progress", "in-progress", "unscanned"}
 
 
 def _res(rule: str, msg: str, uri: str | None = None, props: dict | None = None) -> dict:
@@ -48,7 +51,7 @@ def build_hf_security_run(scan_dir: Path) -> dict | None:
         overall, av, pk = _statuses(sec)
         imports = (sec.get("pickle_import_scan") or {}).get("pickleImports") or []
         detail = {"overall": overall, "av_scan": av, "pickle_import_scan": pk}
-        if sec.get("safe") is False or overall in _BAD or av in _BAD or pk in _BAD:
+        if (sec.get("safe") is False and overall not in _PENDING) or overall in _BAD or av in _BAD or pk in _BAD:
             msg = (sec.get("av_scan") or {}).get("message") or "flagged unsafe by Hugging Face"
             if imports:
                 msg += f" · pickle imports: {', '.join(str(i) for i in imports[:8])}"
@@ -58,6 +61,10 @@ def build_hf_security_run(scan_dir: Path) -> dict | None:
             results.append(_res("HFSEC002", f"rated {overall or av or pk} by Hugging Face", path,
                                 detail))
             flagged.add(path)
+        elif overall in _PENDING:
+            not_scanned += 1
+            results.append(_res("HFSEC003", f"Hugging Face scan {overall} — no verdict yet",
+                                path, detail))
         elif av not in _DONE:
             not_scanned += 1
             results.append(_res("HFSEC003", f"antivirus scan status: {av or 'unknown'} "
