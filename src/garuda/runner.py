@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 from types import ModuleType
 
@@ -57,22 +58,32 @@ def run_static(ctx: ScanContext) -> list[str]:
     ctx.scan_dir.mkdir(parents=True, exist_ok=True)
     ctx.raw_dir.mkdir(exist_ok=True)
     steps = _static_steps()
+    t0 = time.monotonic()
     if ctx.is_local_source:
         _symlink_local(ctx)
-        return _run_steps(ctx, steps)
-    # 01_metadata resolves --revision to a commit SHA; weights are then fetched by that SHA.
-    skipped = _run_steps(ctx, steps[:1])
-    ctx.weights_dir.mkdir(exist_ok=True)
-    _download_weights(ctx)
-    return skipped + _run_steps(ctx, steps[1:])
+        skipped = _run_steps(ctx, steps, len(steps))
+    else:
+        # 01_metadata resolves --revision to a commit SHA; weights are then fetched by that SHA.
+        skipped = _run_steps(ctx, steps[:1], len(steps))
+        ctx.weights_dir.mkdir(exist_ok=True)
+        _download_weights(ctx)
+        skipped += _run_steps(ctx, steps[1:], len(steps), start=2)
+    log.info("static stage done in %.1fs: %d ran, %d skipped%s",
+             time.monotonic() - t0, len(steps) - len(skipped), len(skipped),
+             f" ({', '.join(skipped)})" if skipped else "")
+    return skipped
 
 
-def _run_steps(ctx: ScanContext, steps: list[tuple[str, ModuleType]]) -> list[str]:
+def _run_steps(ctx: ScanContext, steps: list[tuple[str, ModuleType]], total: int,
+               start: int = 1) -> list[str]:
     skipped = []
-    for label, mod in steps:
-        log.info("===== %s =====", label)
+    for i, (label, mod) in enumerate(steps, start):
+        log.info("[%2d/%d] %s ...", i, total, label)
         r = mod.run(ctx)
-        if not r.ran:
+        if r.ran:
+            log.info("[%2d/%d] %s ok (%.1fs)", i, total, label, r.duration_s)
+        else:
+            log.info("[%2d/%d] %s skipped: %s", i, total, label, r.skip_reason)
             skipped.append(label)
     return skipped
 
@@ -81,12 +92,15 @@ def _download_weights(ctx: ScanContext) -> None:
     sha = (load_json(ctx.raw_dir / "01_metadata.json") or {}).get("sha")
     if not sha:
         raise RuntimeError("cannot pin weights: 01_metadata.json has no resolved commit SHA")
+    log.info("downloading %s @ %s ...", ctx.repo, sha[:12])
+    t0 = time.monotonic()
     snapshot_download(
         repo_id=ctx.repo,
         revision=sha,
         local_dir=str(ctx.weights_dir),
         token=os.environ.get("HF_TOKEN"),
     )
+    log.info("download done (%.1fs)", time.monotonic() - t0)
 
 
 def _symlink_local(ctx: ScanContext) -> None:

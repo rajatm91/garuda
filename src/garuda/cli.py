@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import __version__
 from .context import ScanContext
 from .manifest import Manifest, save_manifest
 from .util.io import load_json
 
+log = logging.getLogger("garuda")
 FAIL_LEVELS = {"error": ("error",), "warning": ("error", "warning")}
 
 
@@ -33,15 +36,49 @@ def _add_static_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--expect-publisher", help="Expected HF org/user that owns the repo")
 
 
+BANNER = r"""
+   ____    _    ____  _   _ ____    _
+  / ___|  / \  |  _ \| | | |  _ \  / \
+ | |  _  / _ \ | |_) | | | | | | |/ _ \
+ | |_| |/ ___ \|  _ <| |_| | |_| / ___ \
+  \____/_/   \_\_| \_\\___/|____/_/   \_\
+"""
+
+
+def _banner(rows: list[tuple[str, str]]) -> None:
+    lines = [BANNER.rstrip("\n"), f"  garuda {__version__} - static security scan for open-source LLMs", ""]
+    lines += [f"  {k:<10} {v}" for k, v in rows]
+    print("\n".join(lines) + "\n", file=sys.stderr)
+
+
+def _setup_logging(verbosity: int) -> None:
+    level = {-1: logging.WARNING, 0: logging.INFO}.get(verbosity, logging.DEBUG)
+    fmt = "%(asctime)s %(levelname)-7s " + ("%(name)s: " if level == logging.DEBUG else "")
+    logging.basicConfig(level=level, stream=sys.stderr, force=True,
+                        format=fmt + "%(message)s",
+                        datefmt="%H:%M:%S")
+    # third-party chatter (HTTP requests, download progress internals)
+    for noisy in ("httpx", "urllib3", "huggingface_hub", "filelock"):
+        logging.getLogger(noisy).setLevel(max(level, logging.WARNING))
+
+
 def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    vg = common.add_mutually_exclusive_group()
+    vg.add_argument("-v", "--verbose", action="store_const", const=1, dest="verbosity",
+                    default=0, help="Debug logging (tool command lines)")
+    vg.add_argument("-q", "--quiet", action="store_const", const=-1, dest="verbosity",
+                    help="Warnings and errors only; no banner")
     parser = argparse.ArgumentParser(prog="scan", description="OS LLM scan toolkit")
+    parser.add_argument("--version", action="version", version=f"garuda {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    static_p = sub.add_parser("static", help="Static evidence-pack stage")
+    static_p = sub.add_parser("static", help="Static evidence-pack stage", parents=[common])
     _add_static_args(static_p)
-    all_p = sub.add_parser("all", help="static + report")
+    all_p = sub.add_parser("all", help="static + report", parents=[common])
     _add_static_args(all_p)
     _add_fail_on(all_p)
-    report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir")
+    report_p = sub.add_parser("report", help="Regenerate SARIF + HTML from an existing scan dir",
+                              parents=[common])
     report_p.add_argument("scan_dir", type=Path, help="Path to an existing scan directory")
     _add_fail_on(report_p)
     return parser
@@ -82,6 +119,12 @@ def _run_static(args: argparse.Namespace) -> Path | None:
     )
     scan_dir.mkdir(parents=True, exist_ok=True)
     save_manifest(m)
+    if args.verbosity >= 0:
+        _banner([("Command", args.cmd),
+                 ("Target", str(local) if local else repo),
+                 ("Revision", "(local)" if local else args.revision),
+                 ("Scan dir", str(scan_dir)),
+                 ("Started", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"))])
     t0 = time.monotonic()
     skipped = run_static(ctx)
     m.resolved_sha = (load_json(ctx.raw_dir / "01_metadata.json") or {}).get("sha")
@@ -95,7 +138,9 @@ def _report(scan_dir: Path, fail_on: str | None) -> int:
     from .report.suppress import is_suppressed
     from .runner import run_report
 
-    sarif_path, _ = run_report(scan_dir)
+    sarif_path, html_path = run_report(scan_dir)
+    log.info("SARIF: %s", sarif_path)
+    log.info("HTML:  %s", html_path)
     if not fail_on:
         return 0
     # level default "note" matches the HTML verdict in report/html.py
@@ -120,6 +165,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _setup_logging(args.verbosity)
     if args.cmd == "static":
         return _cmd_static(args)
     if args.cmd == "all":

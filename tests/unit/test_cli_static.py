@@ -27,3 +27,12 @@ def test_relative_out_and_local_path_become_absolute(tmp_path, monkeypatch):
     ctx = rs.call_args.args[0]
     assert ctx.scan_dir == tmp_path.resolve() / "out"
     assert ctx.local_path == tmp_path.resolve() / "model"
+
+
+def test_banner_shown_unless_quiet(tmp_path, capsys):
+    (tmp_path / "model").mkdir()
+    with patch("garuda.runner.run_static", return_value=[]):
+        main(["static", "--local-path", str(tmp_path / "model"), "--out", str(tmp_path / "a")])
+        assert "Scan dir" in capsys.readouterr().err
+        main(["static", "-q", "--local-path", str(tmp_path / "model"), "--out", str(tmp_path / "b")])
+        assert "garuda" not in capsys.readouterr().err
