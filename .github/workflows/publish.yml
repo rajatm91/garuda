@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-    paths: ["src/**", "Dockerfile", "pyproject.toml", "uv.lock", ".github/workflows/publish.yml"]
+    paths: ["src/**", "Dockerfile", ".dockerignore", "pyproject.toml", "uv.lock", ".github/workflows/publish.yml"]
   workflow_dispatch:
 
 permissions:
