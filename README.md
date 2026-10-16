@@ -1,12 +1,6 @@
 <div align="center">
 
-```
-   _________    ____  __  ______  ___
-  / ____/   |  / __ \/ / / / __ \/   |
- / / __/ /| | / /_/ / / / / / / / /| |
-/ /_/ / ___ |/ _, _/ /_/ / /_/ / ___ |
-\____/_/  |_/_/ |_|\____/_____/_/  |_|
-```
+<img src="docs/assets/garuda-logo.svg" alt="GARUDA" width="420">
 
 **Static security scanning for open-source LLMs.**
 Inspect a Hugging Face model before it gets anywhere near production — and hand reviewers evidence, not opinions.
