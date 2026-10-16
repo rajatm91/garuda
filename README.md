@@ -9,6 +9,7 @@ Inspect a Hugging Face model before it gets anywhere near production — and han
 ![Python](https://img.shields.io/badge/python-3.14%2B-blue)
 ![SARIF](https://img.shields.io/badge/output-SARIF%202.1.0-orange)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
 [Quick start](#quick-start) · [What it checks](#what-it-checks) · [Usage](#usage) · [CI gating](#ci-gating) · [Usage guide](USAGE.md)
 
@@ -176,3 +177,7 @@ uv run ruff check . && uv run pyright
 ```
 
 Conventions: numbered `raw/NN_<tool>.*` filenames are a load-bearing contract; every step soft-fails to a `{"skipped": ...}` stub; the HTML report stays dependency-free. See [CLAUDE.md](CLAUDE.md) for architecture notes.
+
+## License
+
+[Apache License 2.0](LICENSE). Scanned models keep their own licenses; Garuda's license does not cover them.
