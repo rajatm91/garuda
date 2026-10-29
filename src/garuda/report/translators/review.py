@@ -88,7 +88,9 @@ RULES = [
     },
 ]
 
-AUTO_MAP_CONFIGS = ("config.json", "tokenizer_config.json")
+# every file transformers reads auto_map from (AutoConfig/Model, tokenizer, processors)
+AUTO_MAP_CONFIGS = ("config.json", "tokenizer_config.json", "preprocessor_config.json",
+                    "processor_config.json", "video_preprocessor_config.json")
 
 
 def _result(
@@ -122,25 +124,34 @@ def sbom_summary(scan_dir: Path) -> dict | None:
     return {"components": len(comps), "ecosystems": dict(eco.most_common())}
 
 
-def _auto_map_refs(weights: Path) -> list[tuple[str, str, str]]:
-    """(config file, Auto class, class reference) for every auto_map entry."""
-    refs = []
+def _auto_map_refs(weights: Path) -> tuple[list[tuple[str, str, str]], list[str]]:
+    """(config file, Auto class, class reference) for every auto_map / custom_pipelines
+    entry, plus config files that exist but could not be read safely (fail closed)."""
+    refs: list[tuple[str, str, str]] = []
+    unchecked: list[str] = []
     real_root = weights.resolve()
     for name in AUTO_MAP_CONFIGS:
         p = weights / name
+        if not p.exists() and not p.is_symlink():
+            continue
         # untrusted model content: never follow a symlink out of the model
-        if p.is_symlink() or not p.is_file() or not p.resolve().is_relative_to(real_root):
+        cfg = (load_json(p) if p.is_file() and not p.is_symlink()
+               and p.resolve().is_relative_to(real_root) else None)
+        if not isinstance(cfg, dict):
+            unchecked.append(name)
             continue
-        cfg = load_json(p)
-        auto_map = cfg.get("auto_map") if isinstance(cfg, dict) else None
-        if not isinstance(auto_map, dict):
-            continue
-        for auto_cls, ref in auto_map.items():
+        entries = list((cfg.get("auto_map") or {}).items()) \
+            if isinstance(cfg.get("auto_map"), dict) else []
+        pipes = cfg.get("custom_pipelines")
+        if isinstance(pipes, dict):
+            entries += [(f"pipeline:{task}", spec.get("impl"))
+                        for task, spec in pipes.items() if isinstance(spec, dict)]
+        for auto_cls, ref in entries:
             # tokenizer entries are [slow, fast] pairs, either may be null
             for r in ref if isinstance(ref, list) else [ref]:
                 if isinstance(r, str) and r:
                     refs.append((name, str(auto_cls), r))
-    return refs
+    return refs, unchecked
 
 
 def _semgrep_covered(scan_dir: Path) -> set[str]:
@@ -165,13 +176,17 @@ def _semgrep_covered(scan_dir: Path) -> set[str]:
 
 
 def _remote_code_results(scan_dir: Path) -> list[dict]:
-    refs = _auto_map_refs(scan_dir / "weights")
+    refs, unchecked = _auto_map_refs(scan_dir / "weights")
+    out = [_result(
+        "OLR007", "warning",
+        f"{cfg} is a symlink, escapes the model, or is not valid JSON — could not check "
+        "whether it makes transformers run custom code.",
+        file_uri=cfg, properties={"config": cfg, "checked": False}) for cfg in unchecked]
     if not refs:
-        return []
+        return out
     scanned = _semgrep_covered(scan_dir)
     own_repo = str((load_json(scan_dir / "raw" / "01_metadata.json") or {}).get("id") or "")
     local: dict[str, list[str]] = {}
-    out = []
     for cfg, auto_cls, ref in refs:
         repo, sep, cls_ref = ref.partition("--")
         # no prefix, or one naming this very repo → the code is in the scanned snapshot

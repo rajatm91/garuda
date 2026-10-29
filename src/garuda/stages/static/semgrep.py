@@ -60,6 +60,11 @@ def run(ctx: ScanContext) -> StageResult:
         sarif = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "Semgrep OSS"}},
                                                 "results": []}]}
     sarif = _annotate(sarif, configs, targets, unscanned, compiled)
+    if exit_code != 0 and sarif.get("runs"):
+        # file-less PARSE_RULE result = whole run untrusted (review's OLR007 coverage reads this)
+        sarif["runs"][0].setdefault("results", []).append({
+            "ruleId": PARSE_RULE, "level": "warning",
+            "message": {"text": f"semgrep exited {exit_code}; results may be incomplete."}})
     partial = _analysis_failures(sarif, staged)
     write_json(out_path, sarif)
     if partial:  # semgrep exits 0 on these: affected files/rules were (partly) not analysed
