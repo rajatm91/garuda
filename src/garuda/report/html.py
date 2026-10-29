@@ -11,6 +11,7 @@ from ..util.io import load_json
 from .model_card import model_summary
 from .review_notes import load_notes
 from .suppress import is_suppressed
+from .translators.review import sbom_summary
 
 # ---------------------------------------------------------------------------
 # CSS — embedded, no external deps. Light theme only (+ print).
@@ -370,6 +371,16 @@ def _dependency_gap(scan_dir: Path) -> str:
             f"check for CVEs.{extra}</div></div>")
 
 
+def _sbom_kpi(scan_dir: Path) -> str:
+    sbom = sbom_summary(scan_dir)
+    if sbom is None:
+        return ""
+    top = ", ".join(f"{_esc(k)} {v}" for k, v in list(sbom["ecosystems"].items())[:3])
+    return (f'<div class="kpi {"neutral" if sbom["components"] else "warn"}"><div class="n">'
+            f'{sbom["components"]}</div><div class="l">{_icon("tool")}SBOM packages'
+            f'{f" ({top})" if top else ""}</div></div>\n')
+
+
 def _fact(icon: str, key: str, value: str, detail: str = "", wide: bool = False) -> str:
     return (f'<div class="fact{" wide" if wide else ""}"><div class="k">{_icon(icon)}{key}</div>'
             f'<div class="v">{value}</div>{f"<div class=d>{detail}</div>" if detail else ""}</div>')
@@ -470,7 +481,7 @@ def build_html(scan_dir: Path, sarif: dict) -> str:
   <div class="kpi neutral"><div class="n">{len(sarif.get("runs", []))}</div><div class="l">{_icon("tool")}Scan tools run</div></div>
   <div class="kpi neutral"><div class="n">{len(sha_inv.get("files", []))}</div><div class="l">{_icon("hash")}Weight files hashed</div></div>
   <div class="kpi {"err" if unsafe else "ok"}"><div class="n">{unsafe}</div><div class="l">{_icon("file")}Unsafe-format files</div></div>
-</div>
+{_sbom_kpi(scan_dir)}</div>
 {_notes_panel(load_notes(scan_dir))}<div class="panel" style="margin-top:16px">
   <h3>Finding distribution</h3>
   <div class="dist" role="img" aria-label="{errors} errors, {warnings} warnings, {notes} informational">

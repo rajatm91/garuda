@@ -63,3 +63,13 @@ def test_empty_sbom_explains_missing_manifest(tmp_path):
         '{"skipped":"x","undeclared_imports":{"torch":["m.py"]}}')
     html = build_html(scan, sarif={"runs": []})
     assert "No dependency manifest" in html and "<code>torch</code>" in html
+
+
+def test_sbom_component_count_shown(tmp_path):
+    scan = _scan(tmp_path)
+    assert "SBOM packages" not in build_html(scan, sarif={"runs": []})  # syft skipped: no tile
+    (scan / "raw" / "08_sbom.cdx.json").write_text(json.dumps({"bomFormat": "CycloneDX",
+        "components": [{"purl": "pkg:pypi/torch@2.1"}, {"purl": "pkg:pypi/numpy@1"},
+                       {"purl": "pkg:npm/left-pad@1"}, {"type": "file"}]}))
+    html = build_html(scan, sarif={"runs": []})
+    assert '<div class="n">4</div>' in html and "SBOM packages (pypi 2, npm 1, file 1)" in html
