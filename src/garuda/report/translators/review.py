@@ -1,6 +1,7 @@
 """Synthetic 'os-llm-review' SARIF run — built from steps 01-03."""
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,16 @@ RULES = [
         },
         "defaultConfiguration": {"level": "error"},
     },
+    {
+        "id": "OLR009",
+        "name": "EmptySbom",
+        "shortDescription": {"text": "SBOM has no components"},
+        "fullDescription": {
+            "text": "syft catalogued 0 packages, so grype had nothing to match — "
+                    "'no vulnerabilities' here means 'not checked'."
+        },
+        "defaultConfiguration": {"level": "note"},
+    },
 ]
 
 AUTO_MAP_CONFIGS = ("config.json", "tokenizer_config.json")
@@ -94,6 +105,21 @@ def _result(
     if properties:
         r["properties"] = properties
     return r
+
+
+def sbom_summary(scan_dir: Path) -> dict | None:
+    """Component count + per-ecosystem counts from 08_sbom.cdx.json; None if syft didn't run."""
+    sbom = load_json(scan_dir / "raw" / "08_sbom.cdx.json")
+    if not isinstance(sbom, dict) or "bomFormat" not in sbom:
+        return None
+    comps = [c for c in sbom.get("components") or [] if isinstance(c, dict)]
+    eco: Counter[str] = Counter()
+    for c in comps:
+        purl = str(c.get("purl") or "")
+        # "pkg:pypi/torch@2.1" → "pypi"; no purl → syft's component type (e.g. "file")
+        eco[purl[4:].partition("/")[0] if purl.startswith("pkg:")
+            else str(c.get("type") or "other")] += 1
+    return {"components": len(comps), "ecosystems": dict(eco.most_common())}
 
 
 def _auto_map_refs(weights: Path) -> list[tuple[str, str, str]]:
@@ -227,6 +253,12 @@ def build_review_run(scan_dir: Path, *, is_local_source: bool) -> dict:
             )
         )
     results.extend(_remote_code_results(scan_dir))
+    sbom = sbom_summary(scan_dir)
+    if sbom is not None and not sbom["components"]:
+        results.append(_result(
+            "OLR009", "note",
+            "No dependency inventory — syft found 0 packages, so grype had nothing to match.",
+            file_uri="raw/08_sbom.cdx.json"))
     if is_local_source:
         results.append(
             _result(

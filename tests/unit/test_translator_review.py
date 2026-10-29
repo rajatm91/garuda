@@ -111,3 +111,20 @@ def test_review_run_level_semgrep_failure_trusts_nothing(tmp_path):
     scan = _with_auto_map(tmp_path, scanned=[])
     _partial(scan, uri=None)
     assert not any(_scanned_flags(scan).values())
+
+
+def test_empty_sbom_emits_note(tmp_path):
+    scan = _scan(tmp_path)
+    assert not any(r["ruleId"] == "OLR009" for r in
+                   build_review_run(scan, is_local_source=False)["results"])  # syft skipped
+    (scan / "raw" / "08_sbom.cdx.json").write_text('{"bomFormat":"CycloneDX","components":[]}')
+    run = build_review_run(scan, is_local_source=False)
+    assert [r["level"] for r in run["results"] if r["ruleId"] == "OLR009"] == ["note"]
+
+
+def test_non_empty_sbom_no_note(tmp_path):
+    scan = _scan(tmp_path)
+    (scan / "raw" / "08_sbom.cdx.json").write_text(json.dumps({"bomFormat": "CycloneDX",
+        "components": [{"purl": "pkg:pypi/torch@2.1"}]}))
+    run = build_review_run(scan, is_local_source=False)
+    assert not any(r["ruleId"] == "OLR009" for r in run["results"])
