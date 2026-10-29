@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ...stages.static.semgrep import PARSE_RULE
 from ...util.io import load_json
 from ..model_card import model_summary
 
@@ -54,7 +55,29 @@ RULES = [
         },
         "defaultConfiguration": {"level": "note"},
     },
+    {
+        "id": "OLR007",
+        "name": "RemoteCodeRequired",
+        "shortDescription": {"text": "Loading the model runs its own Python code"},
+        "fullDescription": {
+            "text": "auto_map in config.json / tokenizer_config.json requires "
+                    "trust_remote_code=True; the listed modules execute at load time."
+        },
+        "defaultConfiguration": {"level": "warning"},
+    },
+    {
+        "id": "OLR008",
+        "name": "RemoteCodeFromOtherRepo",
+        "shortDescription": {"text": "auto_map pulls code from another repository"},
+        "fullDescription": {
+            "text": "A 'repo--module.Class' reference downloads and executes code from a "
+                    "different Hugging Face repo, which this scan did not cover."
+        },
+        "defaultConfiguration": {"level": "error"},
+    },
 ]
+
+AUTO_MAP_CONFIGS = ("config.json", "tokenizer_config.json")
 
 
 def _result(
@@ -71,6 +94,89 @@ def _result(
     if properties:
         r["properties"] = properties
     return r
+
+
+def _auto_map_refs(weights: Path) -> list[tuple[str, str, str]]:
+    """(config file, Auto class, class reference) for every auto_map entry."""
+    refs = []
+    real_root = weights.resolve()
+    for name in AUTO_MAP_CONFIGS:
+        p = weights / name
+        # untrusted model content: never follow a symlink out of the model
+        if p.is_symlink() or not p.is_file() or not p.resolve().is_relative_to(real_root):
+            continue
+        cfg = load_json(p)
+        auto_map = cfg.get("auto_map") if isinstance(cfg, dict) else None
+        if not isinstance(auto_map, dict):
+            continue
+        for auto_cls, ref in auto_map.items():
+            # tokenizer entries are [slow, fast] pairs, either may be null
+            for r in ref if isinstance(ref, list) else [ref]:
+                if isinstance(r, str) and r:
+                    refs.append((name, str(auto_cls), r))
+    return refs
+
+
+def _semgrep_covered(scan_dir: Path) -> set[str]:
+    """Files 12_semgrep fully analysed: submitted targets minus any it flagged as partial.
+    A failure with no file attached (bad run, rule load error) means nothing is trusted."""
+    covered: set[str] = set()
+    semgrep = load_json(scan_dir / "raw" / "12_semgrep.sarif") or {}
+    for run in semgrep.get("runs") or []:
+        partial = set()
+        for res in run.get("results") or []:
+            if res.get("ruleId") != PARSE_RULE:
+                continue
+            uris = [((loc.get("physicalLocation") or {}).get("artifactLocation") or {})
+                    .get("uri") for loc in res.get("locations") or []]
+            if not any(uris):
+                return set()
+            partial.update(u for u in uris if u)
+        if any(inv.get("executionSuccessful") is False for inv in run.get("invocations") or []):
+            return set()
+        covered |= set((run.get("properties") or {}).get("scannedFiles") or []) - partial
+    return covered
+
+
+def _remote_code_results(scan_dir: Path) -> list[dict]:
+    refs = _auto_map_refs(scan_dir / "weights")
+    if not refs:
+        return []
+    scanned = _semgrep_covered(scan_dir)
+    own_repo = str((load_json(scan_dir / "raw" / "01_metadata.json") or {}).get("id") or "")
+    local: dict[str, list[str]] = {}
+    out = []
+    for cfg, auto_cls, ref in refs:
+        repo, sep, cls_ref = ref.partition("--")
+        # no prefix, or one naming this very repo → the code is in the scanned snapshot
+        if not sep or (own_repo and repo.lower() == own_repo.lower()):
+            repo, cls_ref = "", (cls_ref if sep else ref)
+        module = cls_ref.rpartition(".")[0].replace(".", "/") + ".py"
+        if repo:
+            out.append(_result(
+                "OLR008", "error",
+                f"{cfg} auto_map {auto_cls} loads {module} from another repo '{repo}' — "
+                "that code runs at load time and was not scanned.",
+                file_uri=cfg,
+                properties={"repo": repo, "module": module, "autoClass": auto_cls,
+                            "reference": ref}))
+        else:
+            local.setdefault(module, []).append(f"{auto_cls} ({cfg})")
+    for module, users in sorted(local.items()):
+        path = scan_dir / "weights" / module
+        exists = (path.is_file() and not path.is_symlink()
+                  and path.resolve().is_relative_to((scan_dir / "weights").resolve()))
+        covered = module in scanned
+        gaps = [s for s, bad in (("file missing from model", not exists),
+                                 ("not fully analysed by 12_semgrep", not covered)) if bad]
+        out.append(_result(
+            "OLR007", "warning",
+            f"trust_remote_code required: {module} executes at load "
+            f"(via {', '.join(users)})." + (f" {'; '.join(gaps).capitalize()}." if gaps else ""),
+            file_uri=module,
+            properties={"module": module, "usedBy": users, "exists": exists,
+                        "semgrepScanned": covered}))
+    return out
 
 
 def build_review_run(scan_dir: Path, *, is_local_source: bool) -> dict:
@@ -120,6 +226,7 @@ def build_review_run(scan_dir: Path, *, is_local_source: bool) -> dict:
                 properties={"size": f.get("size"), "sha256": f.get("sha256")},
             )
         )
+    results.extend(_remote_code_results(scan_dir))
     if is_local_source:
         results.append(
             _result(
