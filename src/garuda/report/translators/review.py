@@ -71,8 +71,10 @@ RULES = [
         "name": "RemoteCodeFromOtherRepo",
         "shortDescription": {"text": "auto_map pulls code from another repository"},
         "fullDescription": {
-            "text": "A 'repo--module.Class' reference downloads and executes code from a "
-                    "different Hugging Face repo, which this scan did not cover."
+            "text": "A 'repo--module.Class' reference makes transformers download and execute "
+                    "code from that Hugging Face repo at load time. Unless the prefix exactly "
+                    "matches the scanned, SHA-pinned repo, that code is fetched at "
+                    "code_revision (default: main) and was not covered by this scan."
         },
         "defaultConfiguration": {"level": "error"},
     },
@@ -185,19 +187,26 @@ def _remote_code_results(scan_dir: Path) -> list[dict]:
     if not refs:
         return out
     scanned = _semgrep_covered(scan_dir)
-    own_repo = str((load_json(scan_dir / "raw" / "01_metadata.json") or {}).get("id") or "")
+    meta = load_json(scan_dir / "raw" / "01_metadata.json") or {}
+    # transformers pins `repo--` code to the model's revision only when `repo` string-equals
+    # the Hub id being loaded (dynamic_module_utils, 5.x); needs a Hub scan with a pinned SHA
+    pinned_repo = str(meta.get("id") or "") if meta.get("sha") else ""
     local: dict[str, list[str]] = {}
+    hub_fetched: dict[str, str] = {}  # module → own repo it is re-downloaded from
     for cfg, auto_cls, ref in refs:
         repo, sep, cls_ref = ref.partition("--")
-        # no prefix, or one naming this very repo → the code is in the scanned snapshot
-        if not sep or (own_repo and repo.lower() == own_repo.lower()):
-            repo, cls_ref = "", (cls_ref if sep else ref)
+        if not sep:
+            repo, cls_ref = "", ref
         module = cls_ref.rpartition(".")[0].replace(".", "/") + ".py"
+        if repo and repo == pinned_repo:
+            hub_fetched[module] = repo
+            repo = ""
         if repo:
             out.append(_result(
                 "OLR008", "error",
-                f"{cfg} auto_map {auto_cls} loads {module} from another repo '{repo}' — "
-                "that code runs at load time and was not scanned.",
+                f"{cfg} auto_map {auto_cls} loads {module} from Hugging Face repo '{repo}' "
+                "at load time (unpinned: code_revision defaults to main) — that code was "
+                "not scanned.",
                 file_uri=cfg,
                 properties={"repo": repo, "module": module, "autoClass": auto_cls,
                             "reference": ref}))
@@ -210,13 +219,19 @@ def _remote_code_results(scan_dir: Path) -> list[dict]:
         covered = module in scanned
         gaps = [s for s, bad in (("file missing from model", not exists),
                                  ("not fully analysed by 12_semgrep", not covered)) if bad]
+        hub = hub_fetched.get(module)
+        caveat = (f" Referenced as '{hub}--…': transformers downloads it from the Hub — it "
+                  f"matches this scan only when loading '{hub}' by Hub id at the scanned SHA; "
+                  "from a local copy or mirror it fetches main unless code_revision=<sha> "
+                  "is passed." if hub else "")
         out.append(_result(
             "OLR007", "warning",
             f"trust_remote_code required: {module} executes at load "
-            f"(via {', '.join(users)})." + (f" {'; '.join(gaps).capitalize()}." if gaps else ""),
+            f"(via {', '.join(users)})." + (f" {'; '.join(gaps).capitalize()}." if gaps else "")
+            + caveat,
             file_uri=module,
             properties={"module": module, "usedBy": users, "exists": exists,
-                        "semgrepScanned": covered}))
+                        "semgrepScanned": covered, "hubRepo": hub}))
     return out
 
 

@@ -73,15 +73,34 @@ def test_review_no_auto_map_no_remote_code_results(tmp_path):
     assert not {"OLR007", "OLR008"} & {r["ruleId"] for r in run["results"]}
 
 
-def test_review_same_repo_prefix_is_local(tmp_path):
+def _same_repo_ref(tmp_path: Path, prefix: str, *, sha: bool = True) -> list[dict]:
     scan = _with_auto_map(tmp_path, scanned=["modeling_foo.py"])
     (scan / "weights" / "config.json").write_text(json.dumps({"auto_map": {
-        "AutoModel": "Meta-Llama/foo--modeling_foo.FooModel"}}))
-    run = build_review_run(scan, is_local_source=False)
-    assert not any(r["ruleId"] == "OLR008" for r in run["results"])
-    olr7 = [r for r in run["results"] if r["ruleId"] == "OLR007"
+        "AutoModel": f"{prefix}--modeling_foo.FooModel"}}))
+    if not sha:  # --local-path scan: no Hub pin
+        meta = json.loads((scan / "raw" / "01_metadata.json").read_text())
+        (scan / "raw" / "01_metadata.json").write_text(json.dumps({**meta, "sha": None}))
+    return build_review_run(scan, is_local_source=not sha)["results"]
+
+
+def test_review_same_repo_prefix_is_scanned_but_hub_fetched(tmp_path):
+    res = _same_repo_ref(tmp_path, "meta-llama/Foo")
+    assert not any(r["ruleId"] == "OLR008" for r in res)
+    olr7 = [r for r in res if r["ruleId"] == "OLR007"
             and r["properties"]["module"] == "modeling_foo.py"]
     assert olr7 and olr7[0]["properties"]["semgrepScanned"] is True
+    assert olr7[0]["properties"]["hubRepo"] == "meta-llama/Foo"
+    assert "code_revision" in olr7[0]["message"]["text"]
+
+
+def test_review_same_repo_prefix_unpinned_is_error(tmp_path):
+    # transformers compares case-sensitively → different case fetches main
+    assert any(r["ruleId"] == "OLR008" for r in _same_repo_ref(tmp_path, "Meta-Llama/foo"))
+    # local-path scan: no SHA, so even an exact match can't be pinned to what was scanned
+    other = tmp_path / "local"
+    other.mkdir()
+    assert any(r["ruleId"] == "OLR008"
+               for r in _same_repo_ref(other, "meta-llama/Foo", sha=False))
 
 
 def _partial(scan: Path, *, uri: str | None) -> None:
