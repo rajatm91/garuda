@@ -111,3 +111,23 @@ def test_review_run_level_semgrep_failure_trusts_nothing(tmp_path):
     scan = _with_auto_map(tmp_path, scanned=[])
     _partial(scan, uri=None)
     assert not any(_scanned_flags(scan).values())
+
+
+def test_review_reads_processor_configs_and_custom_pipelines(tmp_path):
+    scan = _with_auto_map(tmp_path, scanned=[])
+    w = scan / "weights"
+    (w / "preprocessor_config.json").write_text(json.dumps({"auto_map": {
+        "AutoImageProcessor": "image_processing_foo.FooProc"}}))
+    (w / "config.json").write_text(json.dumps({"custom_pipelines": {
+        "foo-task": {"impl": "pipeline_foo.FooPipeline", "pt": ["AutoModel"]}}}))
+    olr7 = {r["properties"].get("module") for r in build_review_run(
+        scan, is_local_source=False)["results"] if r["ruleId"] == "OLR007"}
+    assert {"image_processing_foo.py", "pipeline_foo.py"} <= olr7
+
+
+def test_review_unreadable_config_is_reported_not_skipped(tmp_path):
+    scan = _with_auto_map(tmp_path, scanned=[])
+    (scan / "weights" / "processor_config.json").write_text("{not json")
+    unchecked = [r for r in build_review_run(scan, is_local_source=False)["results"]
+                 if r["ruleId"] == "OLR007" and r["properties"].get("checked") is False]
+    assert [r["properties"]["config"] for r in unchecked] == ["processor_config.json"]
