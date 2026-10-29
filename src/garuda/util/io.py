@@ -12,7 +12,7 @@ def load_json(path: Path) -> Any | None:
         return None
     try:
         return json.loads(path.read_text())
-    except json.JSONDecodeError:
+    except ValueError:  # bad JSON or non-UTF-8 bytes
         return None
 
 
