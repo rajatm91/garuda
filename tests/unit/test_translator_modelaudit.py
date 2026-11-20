@@ -114,3 +114,28 @@ def test_doc_network_errors_downgraded_but_not_in_templates(tmp_path):
     run = build_modelaudit_run(tmp_path)
     assert run is not None
     assert [r["level"] for r in run["results"]] == ["note", "note", "error"]
+
+
+def test_incomplete_pickle_is_error_env_version_check_is_note(tmp_path):
+    # #35: unfinished analysis of a pickle-capable file fails closed (error); PyTorch
+    # version checks gated on the loader's environment are a note with remediation.
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "03_format_inventory.json").write_text(json.dumps(
+        {"unsafe_format": [{"path": "original/consolidated.00.pth"}]}))
+    pth = "/scans/x/weights/original/consolidated.00.pth"
+    (tmp_path / "raw" / "04_modelaudit.json").write_text(json.dumps({"issues": [], "checks": [
+        {"name": "Pickle Scan", "status": "failed", "message": "timeout", "location": pth,
+         "details": {"analysis_incomplete": True}},
+        {"name": "CVE-2025-32434 PyTorch Version Check", "status": "skipped",
+         "message": "PyTorch runtime version is unknown", "location": pth,
+         "details": {"analysis_incomplete": True,
+                     "runtime_cve_version_gate": "local_environment_only",
+                     "remediation": "Update to PyTorch 2.6.0 or later"}},
+        {"name": "Shard", "status": "failed", "message": "m",
+         "location": "/scans/x/weights/model-1.safetensors",
+         "details": {"analysis_incomplete": True}},
+    ]}))
+    run = build_modelaudit_run(tmp_path)
+    assert run is not None
+    assert [r["level"] for r in run["results"]] == ["error", "note", "warning"]
+    assert "Update to PyTorch 2.6.0" in run["results"][1]["message"]["text"]

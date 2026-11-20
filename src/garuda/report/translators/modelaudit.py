@@ -79,6 +79,8 @@ def build_modelaudit_run(scan_dir: Path) -> dict | None:
         return None
     rules: dict[str, dict] = {}
     results: list[dict[str, Any]] = []
+    inv = load_json(scan_dir / "raw" / "03_format_inventory.json") or {}
+    unsafe = {f.get("path") for f in inv.get("unsafe_format") or []}
     for issue in data.get("issues") or []:
         details = issue.get("details")
         dtype = details.get("type") if isinstance(details, dict) else None
@@ -111,11 +113,22 @@ def build_modelaudit_run(scan_dir: Path) -> dict | None:
             rules.setdefault(INCOMPLETE, {
                 "id": INCOMPLETE, "name": "AnalysisIncomplete",
                 "shortDescription": {"text": "modelaudit could not fully analyse a file"},
-                "defaultConfiguration": {"level": "warning"},
             })
             reason = details.get("error") or details.get("scan_outcome_reason") or ""
+            # Version checks gated on the *loader's* PyTorch (unknown inside the scanner) say
+            # nothing about the file's content → note + remediation, not a coverage gap.
+            env_only = details.get("runtime_cve_version_gate") == "local_environment_only"
+            if env_only:
+                level = "note"
+                reason = details.get("remediation") or reason
+            elif _is_doc(scan_dir, check.get("location")):
+                level = "note"
+            elif _model_path(check.get("location")) in unsafe:
+                level = "error"  # pickle-capable file not fully scanned: fail closed
+            else:
+                level = "warning"
             results.append(_result(
-                INCOMPLETE, "note" if _is_doc(scan_dir, check.get("location")) else "warning",
+                INCOMPLETE, level,
                 f"{check.get('name')}: {check.get('message')}" + (f" ({reason})" if reason else ""),
                 _model_path(check.get("location")),
                 {"check": check.get("name"), "scan_outcome": details.get("scan_outcome")},

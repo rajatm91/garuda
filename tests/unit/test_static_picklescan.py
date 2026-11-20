@@ -36,3 +36,15 @@ def test_runs_one_subprocess_per_unsafe_file(tmp_path: Path):
     out = json.loads(res.output_path.read_text())
     assert len(out["results"]) == 1
     assert out["results"][0]["path"] == "pytorch_model.bin"
+
+
+def test_keeps_stdout_tail_with_summary(tmp_path: Path):
+    ctx = _ctx(tmp_path); ctx.raw_dir.mkdir(); ctx.weights_dir.mkdir()
+    (ctx.raw_dir / "03_format_inventory.json").write_text(json.dumps({
+        "unsafe_format":[{"path":"m.pth","size":1,"sha256":"x"*64}]}))
+    with patch("garuda.stages.static.picklescan.subprocess.run") as r:
+        r.return_value.returncode = 1
+        r.return_value.stdout = "x" * 5000 + "\nDangerous globals: 7\n"; r.return_value.stderr = ""
+        res = step.run(ctx)
+    assert json.loads(res.output_path.read_text())["results"][0]["stdout"].endswith(
+        "Dangerous globals: 7\n")

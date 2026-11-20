@@ -30,9 +30,9 @@ def run(ctx: ScanContext) -> StageResult:
         results.append({
             "path": f["path"],
             "exit_code": r.returncode,
-            "stdout": r.stdout[:2000],
-            "stderr": r.stderr[:2000],
-            "globals_found": "dangerous" in (r.stdout + r.stderr).lower(),
+            # Tail, not head: the SCAN SUMMARY counts the translator relies on come last.
+            "stdout": r.stdout[-2000:],
+            "stderr": r.stderr[-2000:],
         })
     write_json(out_path, {"results": results})
     return StageResult(ran=True, duration_s=time.monotonic() - t0,
